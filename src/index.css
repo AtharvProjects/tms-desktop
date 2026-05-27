@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 250 14% 96%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100% / 0.7;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100% / 0.8;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 262 83% 96%;
+    --accent-foreground: 262 83% 58%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 262 83% 58%;
+    --radius: 1.125rem; /* 18px rounded corners */
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9% / 0.7;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9% / 0.8;
+    --popover-foreground: 0 0% 98%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 262 83% 15%;
+    --accent-foreground: 262 83% 58%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 262 83% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased text-[16px] lg:text-[17px];
+    background-image: radial-gradient(at 0% 0%, hsla(262,83%,58%,0.15) 0px, transparent 50%),
+                      radial-gradient(at 100% 0%, hsla(280,80%,60%,0.1) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+/* Glassmorphism Utilities */
+@layer utilities {
+  .glass {
+    @apply bg-card backdrop-blur-xl border border-white/20 shadow-sm dark:border-white/10;
+  }
+  .glass-sidebar {
+    @apply bg-background/60 backdrop-blur-2xl border-r border-white/20 dark:border-white/10;
+  }
+  .glass-panel {
+    @apply bg-popover backdrop-blur-2xl border border-white/20 shadow-lg dark:border-white/10;
+  }
+  .app-region-drag {
+    -webkit-app-region: drag;
+  }
+  .app-region-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
