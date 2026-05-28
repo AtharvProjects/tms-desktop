@@ -1,9 +1,117 @@
-import { app, BrowserWindow, ipcMain, shell, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, session, dialog } from 'electron'
 import path from 'path'
 import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
 import QRCode from 'qrcode'
-import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js'
+import pkg from 'whatsapp-web.js'
+import { fileURLToPath } from 'url'
+const { Client, LocalAuth, MessageMedia } = pkg
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const logPath = path.join('/Users/ashitosh/Downloads/tms-desktop', 'electron-debug.log');
+fs.writeFileSync(logPath, '--- Electron Debug Log Start ---\n');
+function logToFile(...args: any[]) {
+  const msg = '[INFO] ' + args.map(arg => {
+    if (arg instanceof Error) return arg.message + '\n' + arg.stack;
+    return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+  }).join(' ') + '\n';
+  fs.appendFileSync(logPath, msg);
+}
+function errorToFile(...args: any[]) {
+  const msg = '[ERROR] ' + args.map(arg => {
+    if (arg instanceof Error) return arg.message + '\n' + arg.stack;
+    return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+  }).join(' ') + '\n';
+  fs.appendFileSync(logPath, msg);
+}
+
+// IPC Handler for backup
+ipcMain.handle('app:backup', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return { success: false, error: "No window context found." };
+
+  try {
+    let dbPath = '';
+    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:')) {
+      const relativePath = process.env.DATABASE_URL.replace('file:', '');
+      dbPath = path.resolve(relativePath);
+    } else {
+      dbPath = path.join(app.getPath('userData'), 'tms-database.db');
+    }
+
+    if (!fs.existsSync(dbPath)) {
+      return { success: false, error: `Active database file not found at: ${dbPath}` };
+    }
+
+    const { filePath, canceled } = await dialog.showSaveDialog(window, {
+      title: 'Export Database Backup',
+      defaultPath: path.join(app.getPath('downloads'), 'tms_backup.db'),
+      filters: [
+        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
+      ]
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, error: null };
+    }
+
+    fs.copyFileSync(dbPath, filePath);
+    logToFile(`[Main] Database backup successfully exported to: ${filePath}`);
+    return { success: true, filePath };
+  } catch (error: any) {
+    errorToFile('[Main] Database backup failed:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC Handler for restore
+ipcMain.handle('app:restore', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return { success: false, error: "No window context found." };
+
+  try {
+    let dbPath = '';
+    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:')) {
+      const relativePath = process.env.DATABASE_URL.replace('file:', '');
+      dbPath = path.resolve(relativePath);
+    } else {
+      dbPath = path.join(app.getPath('userData'), 'tms-database.db');
+    }
+
+    const { filePaths, canceled } = await dialog.showOpenDialog(window, {
+      title: 'Select Backup Database File',
+      properties: ['openFile'],
+      filters: [
+        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
+      ]
+    });
+
+    if (canceled || !filePaths || filePaths.length === 0) {
+      return { success: false, error: null };
+    }
+
+    const backupFilePath = filePaths[0];
+
+    // Disconnect Prisma
+    await prisma.$disconnect();
+
+    // Copy backup file
+    fs.copyFileSync(backupFilePath, dbPath);
+    logToFile(`[Main] Database successfully restored from: ${backupFilePath}`);
+
+    // Re-connect
+    await prisma.$connect();
+
+    return { success: true };
+  } catch (error: any) {
+    errorToFile('[Main] Database restore failed:', error);
+    try {
+      await prisma.$connect();
+    } catch (e) {}
+    return { success: false, error: error.message };
+  }
+});
 
 // Initialize Prisma
 const prisma = new PrismaClient({
@@ -29,7 +137,7 @@ async function createWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -83,11 +191,14 @@ ipcMain.handle('app:path', (_, name: 'userData' | 'documents' | 'downloads') => 
 // --- WhatsApp Integration (whatsapp-web.js) ---
 let whatsappClient: Client | null = null;
 let whatsappStatus = 'disconnected'; // 'disconnected', 'loading', 'qr_ready', 'connected'
+let lastQrDataUrl = '';
 
 function getClient(): Client {
   if (!whatsappClient) {
     // Determine where to store session data
     const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
+    logToFile('[Main] Creating WhatsApp Client instance at auth path:', authPath);
+    
     whatsappClient = new Client({
       authStrategy: new LocalAuth({
         dataPath: authPath
@@ -99,35 +210,41 @@ function getClient(): Client {
     });
 
     whatsappClient.on('qr', async (qr) => {
+      logToFile('[Main] WhatsApp Client QR Code event fired!');
       whatsappStatus = 'qr_ready';
       try {
         const qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 5 });
+        lastQrDataUrl = qrDataUrl;
         mainWindow?.webContents.send('whatsapp:qr', qrDataUrl);
         mainWindow?.webContents.send('whatsapp:status', 'qr_ready');
+        logToFile('[Main] Sent whatsapp:qr to renderer.');
       } catch (err) {
-        console.error('Failed to generate QR code data URL', err);
+        errorToFile('[Main] Failed to generate QR code data URL', err);
       }
     });
 
     whatsappClient.on('ready', () => {
       whatsappStatus = 'connected';
+      lastQrDataUrl = '';
       mainWindow?.webContents.send('whatsapp:status', 'connected');
-      console.log('WhatsApp Client is ready!');
+      logToFile('[Main] WhatsApp Client is ready!');
     });
 
     whatsappClient.on('authenticated', () => {
-      console.log('WhatsApp Authenticated!');
+      logToFile('[Main] WhatsApp Authenticated!');
     });
 
     whatsappClient.on('auth_failure', msg => {
-      console.error('WhatsApp Auth failure', msg);
+      errorToFile('[Main] WhatsApp Auth failure', msg);
       whatsappStatus = 'disconnected';
+      lastQrDataUrl = '';
       mainWindow?.webContents.send('whatsapp:status', 'disconnected');
     });
 
     whatsappClient.on('disconnected', (reason) => {
-      console.log('WhatsApp Client was logged out', reason);
+      logToFile('[Main] WhatsApp Client was logged out', reason);
       whatsappStatus = 'disconnected';
+      lastQrDataUrl = '';
       mainWindow?.webContents.send('whatsapp:status', 'disconnected');
       whatsappClient = null;
     });
@@ -136,6 +253,15 @@ function getClient(): Client {
 }
 
 ipcMain.handle('whatsapp:init', async () => {
+  logToFile('[Main] whatsapp:init called. Current status:', whatsappStatus);
+  
+  if (whatsappStatus === 'qr_ready' && lastQrDataUrl) {
+    logToFile('[Main] Re-sending stored QR code URL to renderer.');
+    mainWindow?.webContents.send('whatsapp:qr', lastQrDataUrl);
+    mainWindow?.webContents.send('whatsapp:status', 'qr_ready');
+    return;
+  }
+  
   if (whatsappStatus === 'connected' || whatsappStatus === 'loading') {
     return;
   }
@@ -145,10 +271,13 @@ ipcMain.handle('whatsapp:init', async () => {
   
   try {
     const client = getClient();
+    logToFile('[Main] Calling client.initialize()...');
     await client.initialize();
+    logToFile('[Main] client.initialize() returned.');
   } catch (error) {
-    console.error('Failed to init whatsapp client:', error);
+    errorToFile('[Main] Failed to init whatsapp client:', error);
     whatsappStatus = 'disconnected';
+    lastQrDataUrl = '';
     mainWindow?.webContents.send('whatsapp:status', 'disconnected');
   }
 });
@@ -157,21 +286,43 @@ ipcMain.handle('whatsapp:status', () => {
   return whatsappStatus;
 });
 
+ipcMain.handle('whatsapp:lastQr', () => {
+  return lastQrDataUrl;
+});
+
 ipcMain.handle('whatsapp:disconnect', async () => {
+  logToFile('[Main] whatsapp:disconnect called.');
   if (whatsappClient) {
     try {
+      logToFile('[Main] Logging out whatsapp client...');
       await whatsappClient.logout();
     } catch (e) {
       console.error('Logout error', e);
+      logToFile('[Main] Logout error:', e);
     }
     try {
+      logToFile('[Main] Destroying whatsapp client...');
       await whatsappClient.destroy();
     } catch (e) {
       console.error('Destroy error', e);
+      logToFile('[Main] Destroy error:', e);
     }
     whatsappClient = null;
   }
+  
+  // Clear auth directory to force fresh QR next time
+  const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
+  try {
+    if (fs.existsSync(authPath)) {
+      fs.rmSync(authPath, { recursive: true, force: true });
+      logToFile('[Main] Deleted .wwebjs_auth folder.');
+    }
+  } catch (err) {
+    logToFile('[Main] Failed to delete .wwebjs_auth folder:', err);
+  }
+
   whatsappStatus = 'disconnected';
+  lastQrDataUrl = '';
   mainWindow?.webContents.send('whatsapp:status', 'disconnected');
 });
 
@@ -229,25 +380,30 @@ ipcMain.handle('app:printToPdf', async (_, htmlContent: string) => {
       }
     });
 
+    const trimmed = htmlContent.trim();
+    const isFullHtml = trimmed.toLowerCase().startsWith('<!doctype') || trimmed.toLowerCase().startsWith('<html');
+
     // We can load a basic HTML template with the provided content
-    const htmlToLoad = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          @media print {
-            body { margin: 0; padding: 0; }
-          }
-          body { font-family: sans-serif; }
-          /* Inject tailwind reset / base styles if needed here */
-        </style>
-      </head>
-      <body>
-        ${htmlContent}
-      </body>
-      </html>
-    `;
+    const htmlToLoad = isFullHtml
+      ? htmlContent
+      : `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            @media print {
+              body { margin: 0; padding: 0; }
+            }
+            body { font-family: sans-serif; }
+            /* Inject tailwind reset / base styles if needed here */
+          </style>
+        </head>
+        <body>
+          ${htmlContent}
+        </body>
+        </html>
+      `;
 
     printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlToLoad)}`);
 

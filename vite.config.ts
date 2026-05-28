@@ -13,7 +13,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['@prisma/client', 'electron']
+              external: ['@prisma/client', 'electron', 'whatsapp-web.js', 'qrcode', 'puppeteer']
             }
           }
         }
@@ -23,6 +23,18 @@ export default defineConfig({
         onstart(options) {
           options.reload()
         },
+        vite: {
+          build: {
+            lib: {
+              entry: 'electron/preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.cjs'
+            },
+            rollupOptions: {
+              external: ['electron']
+            }
+          }
+        }
       },
     ]),
     renderer(),

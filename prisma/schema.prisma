@@ -83,6 +83,7 @@ model Driver {
   driverName       String
   mobileNumber     String
   licenseNumber    String?
+  licenseExpiry    DateTime?
   aadhaarNumber    String?
   panNumber        String?
   

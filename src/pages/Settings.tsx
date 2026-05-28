@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Building, Sun, Moon, Database, Save, CheckCircle2, MessageSquare, QrCode, Smartphone, RefreshCw, Unlink, Check } from 'lucide-react'
+import { Building, Sun, Moon, Database, Save, CheckCircle2, MessageSquare, QrCode, Smartphone, RefreshCw, Unlink, Check, Download, Upload } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function Settings() {
@@ -87,6 +87,46 @@ export default function Settings() {
     setTestSent(false)
   }
 
+  const handleBackup = async () => {
+    if (!window.electronAPI?.app?.backup) {
+      alert("Backup functionality is only available in the desktop application.")
+      return
+    }
+
+    try {
+      const res = await window.electronAPI.app.backup()
+      if (res.success && res.filePath) {
+        alert(`Backup file saved successfully at:\n${res.filePath}`)
+      } else if (res.error) {
+        alert(`Failed to save backup: ${res.error}`)
+      }
+    } catch (err: any) {
+      alert(`Error creating backup: ${err.message}`)
+    }
+  }
+
+  const handleRestore = async () => {
+    if (!window.electronAPI?.app?.restore) {
+      alert("Restore functionality is only available in the desktop application.")
+      return
+    }
+
+    const confirm = window.confirm("WARNING: Restoring a backup will overwrite your current active database and delete any unsaved changes. The application will reload. Do you want to proceed?")
+    if (!confirm) return
+
+    try {
+      const res = await window.electronAPI.app.restore()
+      if (res.success) {
+        alert("Database successfully restored! The app will now reload.")
+        window.location.reload()
+      } else if (res.error) {
+        alert(`Failed to restore database: ${res.error}`)
+      }
+    } catch (err: any) {
+      alert(`Error restoring database: ${err.message}`)
+    }
+  }
+
   useEffect(() => {
     // Load company details
     const savedName = localStorage.getItem('companyName')
@@ -116,6 +156,10 @@ export default function Settings() {
         } else if (status === 'qr_ready' || status === 'loading') {
           setWhatsappStatus(status)
           setIsLinking(true)
+          if (status === 'qr_ready') {
+            const qr = await window.electronAPI.whatsapp!.getLastQr()
+            if (qr) setQrCode(qr)
+          }
         } else {
           setWhatsappStatus('disconnected')
         }
@@ -354,10 +398,12 @@ export default function Settings() {
                 className={
                   whatsappConnected 
                     ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold" 
-                    : "bg-orange-500/10 border-orange-500/20 text-orange-500 font-bold"
+                    : whatsappStatus === 'loading'
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-500 font-bold"
+                      : "bg-orange-500/10 border-orange-500/20 text-orange-500 font-bold"
                 }
               >
-                {whatsappConnected ? "Connected" : "Disconnected"}
+                {whatsappConnected ? "Connected" : whatsappStatus === 'loading' ? "Starting..." : "Disconnected"}
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -368,7 +414,7 @@ export default function Settings() {
                       <Smartphone className="h-6 w-6" />
                     </div>
                     <div className="flex-1 space-y-1">
-                      <p className="font-bold text-slate-800 dark:text-slate-200">Device Linked: Android (Chrome Web)</p>
+                      <p className="font-bold text-slate-800 dark:text-slate-200">Device Linked Successfully</p>
                       <p className="text-xs text-muted-foreground">Active for Invoice sharing & Payment reminders</p>
                     </div>
                   </div>
@@ -414,7 +460,7 @@ export default function Settings() {
                       <li>Tap <strong>Settings / Linked Devices</strong></li>
                       <li>Tap <strong>Link a Device</strong> and point your camera to this screen</li>
                     </ol>
-                    <div className="pt-2">
+                    <div className="pt-2 flex flex-col gap-2">
                       <Button 
                         type="button"
                         onClick={handleLinkDevice}
@@ -424,7 +470,7 @@ export default function Settings() {
                         {isLinking ? (
                           <>
                             <RefreshCw className="h-4 w-4 animate-spin" />
-                            {whatsappStatus === 'qr_ready' ? 'Waiting for Scan...' : 'Loading...'}
+                            {whatsappStatus === 'qr_ready' ? 'Waiting for Scan...' : 'Starting Client...'}
                           </>
                         ) : (
                           <>
@@ -433,24 +479,45 @@ export default function Settings() {
                           </>
                         )}
                       </Button>
+                      
+                      {isLinking && whatsappStatus === 'loading' && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={handleDisconnectWA}
+                          className="w-full h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        >
+                          Cancel / Reset if stuck
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-center justify-center border border-white/10 bg-white/5 rounded-2xl p-4 relative overflow-hidden group">
+                   <div className="flex flex-col items-center justify-center border border-white/10 bg-white/5 rounded-2xl p-4 relative overflow-hidden group min-h-[220px]">
                     {/* Glowing green scanning laser line */}
                     {isLinking && whatsappStatus !== 'qr_ready' && (
                       <div className="absolute left-0 w-full h-0.5 bg-emerald-500 shadow-[0_0_8px_#10b981] z-10 animate-[scan_2s_ease-in-out_infinite]" />
                     )}
-                    <img 
-                      src={qrCode || "/whatsapp-qr.png"} 
-                      alt="WhatsApp QR Code Link" 
-                      className={`h-40 w-40 object-contain rounded-lg transition-all duration-300 ${
-                        isLinking && !qrCode ? "blur-[2px] opacity-60 scale-95" : ""
-                      }`}
-                    />
-                    <span className="text-[10px] text-muted-foreground mt-2 font-mono uppercase tracking-wider">
-                      {isLinking && !qrCode ? "Loading QR Code..." : "Scan QR Code to Link"}
+                    {qrCode ? (
+                      <img 
+                        src={qrCode} 
+                        alt="WhatsApp QR Code Link" 
+                        className="h-40 w-40 object-contain rounded-lg transition-all duration-300 bg-white p-1"
+                      />
+                    ) : (
+                      <div className="h-40 w-40 flex flex-col items-center justify-center text-muted-foreground/50 border-2 border-dashed border-white/10 rounded-xl">
+                        <QrCode className="h-10 w-10 mb-2 opacity-50" />
+                        <span className="text-xs font-medium">QR Area</span>
+                      </div>
+                    )}
+                    <span className="text-[10px] text-muted-foreground mt-3 font-mono uppercase tracking-wider text-center">
+                      {isLinking && !qrCode ? "Starting WhatsApp engine...\n(This can take 10-30s)" : qrCode ? "Scan QR Code to Link" : "Click 'Link Phone' to generate QR"}
                     </span>
+                    {(!window.electronAPI || !window.electronAPI.app) && (
+                      <div className="mt-3 p-2.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 rounded-xl text-[11px] text-center max-w-[190px] font-medium leading-normal">
+                        ⚠️ Browser Preview Mode: Scanning this mock QR will not link. Please open the Desktop App window.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -460,7 +527,7 @@ export default function Settings() {
 
         {/* Right Column: Database / System Info */}
         <div className="space-y-6">
-          <Card className="glass h-full">
+          <Card className="glass">
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Database className="h-5 w-5 text-primary" />
@@ -519,6 +586,39 @@ export default function Settings() {
                     {stats.invoices}
                   </Badge>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass">
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <Database className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg font-bold">Backup & Restore</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Export all transactions, fleet logs, and accounts into a database backup file, or restore from an existing backup to retrieve your data.
+              </p>
+              <div className="flex flex-col gap-2 pt-2">
+                <Button
+                  type="button"
+                  onClick={handleBackup}
+                  className="h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md"
+                >
+                  <Download className="h-4 w-4" />
+                  Backup Database
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRestore}
+                  className="h-11 border-white/10 hover:bg-white/5 text-foreground font-semibold rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Upload className="h-4 w-4 text-emerald-400" />
+                  Restore Database
+                </Button>
               </div>
             </CardContent>
           </Card>

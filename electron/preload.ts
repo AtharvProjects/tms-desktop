@@ -7,11 +7,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getPath: (name: string) => ipcRenderer.invoke('app:path', name),
   app: {
-    printToPdf: (htmlContent: string) => ipcRenderer.invoke('app:printToPdf', htmlContent)
+    printToPdf: (htmlContent: string) => ipcRenderer.invoke('app:printToPdf', htmlContent),
+    backup: () => ipcRenderer.invoke('app:backup'),
+    restore: () => ipcRenderer.invoke('app:restore')
   },
   whatsapp: {
     init: () => ipcRenderer.invoke('whatsapp:init'),
     getStatus: () => ipcRenderer.invoke('whatsapp:status'),
+    getLastQr: () => ipcRenderer.invoke('whatsapp:lastQr'),
     send: (phone: string, text: string) => ipcRenderer.invoke('whatsapp:send', { phone, text }),
     sendMedia: (args: { phone: string, caption?: string, base64Data: string, mimetype: string, filename: string }) => 
       ipcRenderer.invoke('whatsapp:sendMedia', args),

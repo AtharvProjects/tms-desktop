@@ -683,6 +683,22 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
         }
       }
     },
+    app: {
+      printToPdf: async (htmlContent: string) => {
+        console.log("Mock printToPdf");
+        return "mockBase64Data";
+      },
+      backup: async () => {
+        console.log("Mock backup database");
+        alert("Database Backup is only available when running inside the native Desktop App.");
+        return { success: false, error: "Not supported in web browser preview." };
+      },
+      restore: async () => {
+        console.log("Mock restore database");
+        alert("Database Restore is only available when running inside the native Desktop App.");
+        return { success: false, error: "Not supported in web browser preview." };
+      }
+    },
     getPath: async (name: string) => {
       return `/mock-user-path/${name}`;
     },
@@ -697,16 +713,16 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
           setTimeout(() => {
             if (qrListener) qrListener('/whatsapp-qr.png');
             if (statusListener) statusListener('qr_ready');
-            
-            // Simulate user scanning the QR after 3 seconds
-            setTimeout(() => {
-              if (statusListener) statusListener('connected');
-            }, 3000);
           }, 1500);
         },
         getStatus: async () => 'disconnected',
+        getLastQr: async () => '/whatsapp-qr.png',
         send: async (phone: string, text: string) => {
           console.log(`Mock WhatsApp send to ${phone}: ${text}`);
+          return { success: true, error: null };
+        },
+        sendMedia: async (args: { phone: string, caption?: string, base64Data: string, mimetype: string, filename: string }) => {
+          console.log(`Mock WhatsApp sendMedia to ${args.phone} (${args.filename}, ${args.mimetype}): ${args.caption}`);
           return { success: true, error: null };
         },
         disconnect: async () => {
