@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Plus, Search, Calendar, MapPin, Edit, AlertTriangle, Trash2, Download, RefreshCw, TrendingUp, Filter } from 'lucide-react'
+import { Plus, Search, Calendar, MapPin, Edit, AlertTriangle, Trash2, Download, RefreshCw, TrendingUp, Filter, Printer } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { 
   Table, 
@@ -21,7 +21,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from '@/components/ui/label'
-
+import { TripReportView } from '../components/TripReportView'
+import { processCSVImport, CSV_HEADERS } from '@/lib/csvImport'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { MoreVertical, Send } from 'lucide-react'
 export default function Trips() {
   const location = useLocation()
   const [trips, setTrips] = useState<any[]>([])
@@ -33,9 +41,12 @@ export default function Trips() {
   
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [dateFilter, setDateFilter] = useState('All')
   const [isNewOpen, setIsNewOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isReportOpen, setIsReportOpen] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [selectedTrip, setSelectedTrip] = useState<any>(null)
 
   // Form State for Create/Edit
@@ -51,10 +62,20 @@ export default function Trips() {
   const [billingType, setBillingType] = useState('Fixed')
   const [freightAmount, setFreightAmount] = useState('0')
   const [dieselAmount, setDieselAmount] = useState('0')
+  const [liquidDiesel, setLiquidDiesel] = useState('0')
   const [driverCash, setDriverCash] = useState('0')
-  const [toll, setToll] = useState('0')
-  const [advance, setAdvance] = useState('0')
+  const [toll, setToll] = useState('0') // Fastag/Toll
+  const [partyAdvance, setPartyAdvance] = useState('0')
+  const [driverAdvance, setDriverAdvance] = useState('0')
+  const [commission, setCommission] = useState('0')
+  const [maintenance, setMaintenance] = useState('0')
+  const [extraRunning, setExtraRunning] = useState('0')
+  const [detentionTime, setDetentionTime] = useState('')
+  const [loadingDate, setLoadingDate] = useState('')
+  const [unloadingDate, setUnloadingDate] = useState('')
+  const [reportDate, setReportDate] = useState('')
   const [extraCharges, setExtraCharges] = useState('0')
+  const [status, setStatus] = useState('Scheduled')
   const [podStatus, setPodStatus] = useState('Pending')
   const [paymentStatus, setPaymentStatus] = useState('Pending')
   const [notes, setNotes] = useState('')
@@ -131,11 +152,21 @@ export default function Trips() {
     setSizeWeight(trip.sizeWeight || '')
     setBillingType(trip.billingType)
     setFreightAmount(trip.freightAmount.toString())
-    setDieselAmount(trip.dieselAmount.toString())
-    setDriverCash(trip.driverCash.toString())
-    setToll(trip.toll.toString())
-    setAdvance(trip.advance.toString())
-    setExtraCharges(trip.extraCharges.toString())
+    setDieselAmount(trip.dieselAmount?.toString() || '0')
+    setLiquidDiesel(trip.liquidDiesel?.toString() || '0')
+    setDriverCash(trip.driverCash?.toString() || '0')
+    setToll(trip.toll?.toString() || '0')
+    setPartyAdvance(trip.partyAdvance?.toString() || '0')
+    setDriverAdvance(trip.driverAdvance?.toString() || '0')
+    setCommission(trip.commission?.toString() || '0')
+    setMaintenance(trip.maintenance?.toString() || '0')
+    setExtraRunning(trip.extraRunning?.toString() || '0')
+    setDetentionTime(trip.detentionTime || '')
+    setLoadingDate(trip.loadingDate ? new Date(trip.loadingDate).toISOString().split('T')[0] : '')
+    setUnloadingDate(trip.unloadingDate ? new Date(trip.unloadingDate).toISOString().split('T')[0] : '')
+    setReportDate(trip.reportDate ? new Date(trip.reportDate).toISOString().split('T')[0] : '')
+    setExtraCharges(trip.extraCharges?.toString() || '0')
+    setStatus(trip.status || 'Scheduled')
     setPodStatus(trip.podStatus)
     setPaymentStatus(trip.paymentStatus)
     setNotes(trip.notes || '')
@@ -163,10 +194,21 @@ export default function Trips() {
           billingType,
           freightAmount: parseFloat(freightAmount) || 0,
           dieselAmount: parseFloat(dieselAmount) || 0,
+          liquidDiesel: parseFloat(liquidDiesel) || 0,
           driverCash: parseFloat(driverCash) || 0,
           toll: parseFloat(toll) || 0,
-          advance: parseFloat(advance) || 0,
+          partyAdvance: parseFloat(partyAdvance) || 0,
+          driverAdvance: parseFloat(driverAdvance) || 0,
+          commission: parseFloat(commission) || 0,
+          maintenance: parseFloat(maintenance) || 0,
+          extraRunning: parseFloat(extraRunning) || 0,
+          detentionTime: detentionTime || null,
+          loadingDate: loadingDate ? new Date(loadingDate) : null,
+          unloadingDate: unloadingDate ? new Date(unloadingDate) : null,
+          reportDate: reportDate ? new Date(reportDate) : null,
           extraCharges: parseFloat(extraCharges) || 0,
+          balance: (parseFloat(freightAmount) || 0) - (parseFloat(partyAdvance) || 0),
+          status,
           podStatus,
           paymentStatus
         }
@@ -200,10 +242,21 @@ export default function Trips() {
           billingType,
           freightAmount: parseFloat(freightAmount) || 0,
           dieselAmount: parseFloat(dieselAmount) || 0,
+          liquidDiesel: parseFloat(liquidDiesel) || 0,
           driverCash: parseFloat(driverCash) || 0,
           toll: parseFloat(toll) || 0,
-          advance: parseFloat(advance) || 0,
+          partyAdvance: parseFloat(partyAdvance) || 0,
+          driverAdvance: parseFloat(driverAdvance) || 0,
+          commission: parseFloat(commission) || 0,
+          maintenance: parseFloat(maintenance) || 0,
+          extraRunning: parseFloat(extraRunning) || 0,
+          detentionTime: detentionTime || null,
+          loadingDate: loadingDate ? new Date(loadingDate) : null,
+          unloadingDate: unloadingDate ? new Date(unloadingDate) : null,
+          reportDate: reportDate ? new Date(reportDate) : null,
           extraCharges: parseFloat(extraCharges) || 0,
+          balance: (parseFloat(freightAmount) || 0) - (parseFloat(partyAdvance) || 0),
+          status,
           podStatus,
           paymentStatus,
           notes: notes || null
@@ -252,10 +305,20 @@ export default function Trips() {
     setBillingType('Fixed')
     setFreightAmount('0')
     setDieselAmount('0')
+    setLiquidDiesel('0')
     setDriverCash('0')
     setToll('0')
-    setAdvance('0')
+    setPartyAdvance('0')
+    setDriverAdvance('0')
+    setCommission('0')
+    setMaintenance('0')
+    setExtraRunning('0')
+    setDetentionTime('')
+    setLoadingDate('')
+    setUnloadingDate('')
+    setReportDate('')
     setExtraCharges('0')
+    setStatus('Scheduled')
     setPodStatus('Pending')
     setPaymentStatus('Pending')
     setNotes('')
@@ -264,16 +327,19 @@ export default function Trips() {
   }
 
   const calcNetProfit = (trip: any) => {
-    return trip.freightAmount - (trip.dieselAmount || 0) - (trip.driverCash || 0) - (trip.toll || 0) - (trip.extraCharges || 0)
+    return (trip.freightAmount || 0) - (trip.commission || 0) - (trip.dieselAmount || 0) - (trip.liquidDiesel || 0) - (trip.driverCash || 0) - (trip.toll || 0) - (trip.maintenance || 0) - (trip.extraRunning || 0) - (trip.extraCharges || 0)
   }
 
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 
   const exportToCSV = () => {
-    const headers = ['Trip No', 'Date', 'Vehicle', 'Driver', 'Party', 'From', 'To', 'Material', 'Billing Type', 'Freight', 'Diesel', 'Driver Cash', 'Toll', 'Advance', 'Extra Charges', 'Net Profit', 'POD Status', 'Payment Status', 'Notes']
+    const headers = ['Trip No', 'Date', 'Report Date', 'Loading Date', 'Unloading Date', 'Vehicle', 'Driver', 'Party', 'From', 'To', 'Material', 'Billing Type', 'Freight', 'Party Advance', 'Driver Advance', 'Balance', 'Commission', 'Maintenance', 'Fastag/Toll', 'Diesel', 'Liquid Diesel', 'Driver Cash', 'Extra Running', 'Detention Time', 'Extra Charges', 'Net Profit', 'POD Status', 'Payment Status', 'Notes']
     const rows = filteredTrips.map(t => [
       t.tripNo,
       new Date(t.tripDate).toLocaleDateString(),
+      t.reportDate ? new Date(t.reportDate).toLocaleDateString() : '',
+      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString() : '',
+      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString() : '',
       t.vehicle?.vehicleNumber || '',
       t.driver?.driverName || '',
       t.party?.companyName || '',
@@ -282,10 +348,17 @@ export default function Trips() {
       t.material || '',
       t.billingType,
       t.freightAmount,
-      t.dieselAmount,
-      t.driverCash,
+      t.partyAdvance,
+      t.driverAdvance,
+      t.balance,
+      t.commission,
+      t.maintenance,
       t.toll,
-      t.advance,
+      t.dieselAmount,
+      t.liquidDiesel,
+      t.driverCash,
+      t.extraRunning,
+      t.detentionTime || '',
       t.extraCharges,
       calcNetProfit(t),
       t.podStatus,
@@ -300,6 +373,91 @@ export default function Trips() {
     a.download = `trips_export_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // reset input so same file can be selected again
+    e.target.value = '';
+
+    processCSVImport(file, () => {
+      alert('Import successful!');
+      loadData();
+    }, (err) => {
+      alert(`Import failed: ${err}`);
+    });
+  }
+
+  const downloadCSVTemplate = () => {
+    const csvContent = CSV_HEADERS.join(',') + '\\n';
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trips_import_template.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const handleSaveAsPDF = async () => {
+    if (!window.electronAPI.app?.printToPdf) return;
+    const container = document.querySelector('.print-report-container');
+    if (!container) return;
+    
+    setIsGeneratingPdf(true);
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: sans-serif; margin: 0; padding: 16px; font-size: 10px; }
+            table { width: 100%; border-collapse: collapse; border: 1px solid black; text-align: center; }
+            th, td { border: 1px solid black; padding: 4px; word-wrap: break-word; }
+            .bg-gray-200 { background-color: #e5e7eb; }
+            .bg-gray-50 { background-color: #f9fafb; }
+            .bg-white { background-color: white; }
+            .font-bold { font-weight: bold; }
+            .italic { font-style: italic; }
+            .not-italic { font-style: normal; }
+            .font-normal { font-weight: normal; }
+            .font-medium { font-weight: 500; }
+            .font-semibold { font-weight: 600; }
+            .uppercase { text-transform: uppercase; }
+            .text-left { text-align: left; }
+            .align-top { vertical-align: top; }
+            .whitespace-pre-wrap { white-space: pre-wrap; }
+            .break-words { word-break: break-word; }
+            
+            /* Add specific column widths based on Tailwind classes used */
+            th.w-\\[8\\%\\] { width: 8%; }
+            th.w-\\[11\\%\\] { width: 11%; }
+            th.w-\\[14\\%\\] { width: 14%; }
+            th.w-\\[10\\%\\] { width: 10%; }
+            th.w-\\[7\\%\\] { width: 7%; }
+            th.w-\\[5\\%\\] { width: 5%; }
+            th.w-\\[4\\%\\] { width: 4%; }
+          </style>
+        </head>
+        <body>
+          ${container.innerHTML}
+        </body>
+      </html>
+    `;
+    
+    try {
+      const base64Pdf = await window.electronAPI.app.printToPdf(htmlContent);
+      const link = document.createElement('a');
+      link.href = `data:application/pdf;base64,${base64Pdf}`;
+      link.download = `Trips_Statement_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.click();
+    } catch (err) {
+      console.error("Failed to generate PDF", err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   }
 
   const statusFilters = [
@@ -327,12 +485,26 @@ export default function Trips() {
     if (statusFilter === 'overdue') {
       return trip.podStatus === 'Pending' && (new Date().getTime() - new Date(trip.tripDate).getTime() > 5 * 24 * 60 * 60 * 1000)
     }
+    
+    // Apply Date Filter
+    if (dateFilter !== 'All') {
+      const tripD = new Date(trip.tripDate);
+      const now = new Date();
+      if (dateFilter === 'This Month') {
+        if (tripD.getMonth() !== now.getMonth() || tripD.getFullYear() !== now.getFullYear()) return false;
+      } else if (dateFilter === 'Last Month') {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        if (tripD.getMonth() !== lastMonth.getMonth() || tripD.getFullYear() !== lastMonth.getFullYear()) return false;
+      }
+    }
+
     return true
   })
 
   const totalFreight = filteredTrips.reduce((acc, t) => acc + (t.freightAmount || 0), 0)
-  const totalOutstanding = filteredTrips.filter(t => t.paymentStatus !== 'Paid').reduce((acc, t) => acc + (t.freightAmount - t.advance), 0)
+  const totalOutstanding = filteredTrips.filter(t => t.paymentStatus !== 'Paid').reduce((acc, t) => acc + (t.freightAmount - (t.partyAdvance || 0)), 0)
   const totalNetProfit = filteredTrips.reduce((acc, t) => acc + calcNetProfit(t), 0)
+  const marginPercent = totalFreight > 0 ? ((totalNetProfit / totalFreight) * 100).toFixed(1) : '0.0'
 
   const tripFormContent = (isEdit: boolean, onSubmit: (e: React.FormEvent) => void) => (
     <form onSubmit={onSubmit} className="space-y-4 py-4">
@@ -346,6 +518,21 @@ export default function Trips() {
         <div className="space-y-2">
           <Label>Trip Date *</Label>
           <Input type="date" value={tripDate} onChange={(e) => setTripDate(e.target.value)} className="bg-background/50 border-white/10" required />
+        </div>
+        <div className="space-y-2">
+          <Label>Report Date</Label>
+          <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-background/50 border-white/10" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label>Loading Date</Label>
+          <Input type="date" value={loadingDate} onChange={(e) => setLoadingDate(e.target.value)} className="bg-background/50 border-white/10" />
+        </div>
+        <div className="space-y-2">
+          <Label>Unloading Date</Label>
+          <Input type="date" value={unloadingDate} onChange={(e) => setUnloadingDate(e.target.value)} className="bg-background/50 border-white/10" />
         </div>
         <div className="space-y-2">
           <Label>Vehicle *</Label>
@@ -392,29 +579,61 @@ export default function Trips() {
             <option value="Per Trip">Per Trip</option>
           </select>
         </div>
-        <div className="space-y-2"><Label>Freight Amount (₹) *</Label><Input type="number" value={freightAmount} onChange={(e) => setFreightAmount(e.target.value)} className="bg-background/50 border-white/10 font-semibold" required /></div>
-        <div className="space-y-2"><Label>Advance Received (₹)</Label><Input type="number" value={advance} onChange={(e) => setAdvance(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Freight Amount (₹) *</Label><Input type="number" value={freightAmount} onChange={(e) => setFreightAmount(e.target.value)} className="bg-background/50 border-white/10 font-semibold text-primary" required /></div>
+        <div className="space-y-2"><Label>Commission (₹)</Label><Input type="number" value={commission} onChange={(e) => setCommission(e.target.value)} className="bg-background/50 border-white/10" /></div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2"><Label>Driver Cash Advance (₹)</Label><Input type="number" value={driverCash} onChange={(e) => setDriverCash(e.target.value)} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>Diesel Amount (₹)</Label><Input type="number" value={dieselAmount} onChange={(e) => setDieselAmount(e.target.value)} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>Toll Cash (₹)</Label><Input type="number" value={toll} onChange={(e) => setToll(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Party Advance (₹)</Label><Input type="number" value={partyAdvance} onChange={(e) => setPartyAdvance(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Driver Advance (₹)</Label><Input type="number" value={driverAdvance} onChange={(e) => setDriverAdvance(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Driver Cash (₹)</Label><Input type="number" value={driverCash} onChange={(e) => setDriverCash(e.target.value)} className="bg-background/50 border-white/10" /></div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2"><Label>Fastag/Toll (₹)</Label><Input type="number" value={toll} onChange={(e) => setToll(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Diesel Amount (₹)</Label><Input type="number" value={dieselAmount} onChange={(e) => setDieselAmount(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Liquid Diesel (₹)</Label><Input type="number" value={liquidDiesel} onChange={(e) => setLiquidDiesel(e.target.value)} className="bg-background/50 border-white/10" /></div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2"><Label>Maintenance (₹)</Label><Input type="number" value={maintenance} onChange={(e) => setMaintenance(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Extra Running (₹)</Label><Input type="number" value={extraRunning} onChange={(e) => setExtraRunning(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>Detention Time</Label><Input placeholder="e.g. 2 Days" value={detentionTime} onChange={(e) => setDetentionTime(e.target.value)} className="bg-background/50 border-white/10" /></div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2"><Label>Extra Charges (₹)</Label><Input type="number" value={extraCharges} onChange={(e) => setExtraCharges(e.target.value)} className="bg-background/50 border-white/10" /></div>
-        <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="p-3 flex justify-between items-center">
-            <span className="text-xs text-muted-foreground">Net Profit (Est.)</span>
-            <span className={`text-base font-bold ${(parseFloat(freightAmount) - parseFloat(dieselAmount) - parseFloat(driverCash) - parseFloat(toll) - parseFloat(extraCharges)) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {formatCurrency(parseFloat(freightAmount) - parseFloat(dieselAmount) - parseFloat(driverCash) - parseFloat(toll) - parseFloat(extraCharges))}
+        
+        <Card className="bg-orange-500/10 border-orange-500/20 col-span-1">
+          <CardContent className="p-3 flex justify-between items-center h-full">
+            <span className="text-xs text-orange-500/80 font-medium">Balance</span>
+            <span className={`text-lg font-bold text-orange-500`}>
+              {formatCurrency((parseFloat(freightAmount) || 0) - (parseFloat(partyAdvance) || 0))}
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-primary/5 border-primary/20 col-span-1">
+          <CardContent className="p-3 flex justify-between items-center h-full">
+            <span className="text-xs text-muted-foreground font-medium">Net Profit</span>
+            <span className={`text-lg font-bold ${((parseFloat(freightAmount) || 0) - (parseFloat(commission) || 0) - (parseFloat(dieselAmount) || 0) - (parseFloat(liquidDiesel) || 0) - (parseFloat(driverCash) || 0) - (parseFloat(toll) || 0) - (parseFloat(maintenance) || 0) - (parseFloat(extraRunning) || 0) - (parseFloat(extraCharges) || 0)) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {formatCurrency((parseFloat(freightAmount) || 0) - (parseFloat(commission) || 0) - (parseFloat(dieselAmount) || 0) - (parseFloat(liquidDiesel) || 0) - (parseFloat(driverCash) || 0) - (parseFloat(toll) || 0) - (parseFloat(maintenance) || 0) - (parseFloat(extraRunning) || 0) - (parseFloat(extraCharges) || 0))}
             </span>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+      <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
+        <div className="space-y-2">
+          <Label>Trip Status</Label>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
+            <option value="Scheduled">Scheduled</option>
+            <option value="Loading">Loading</option>
+            <option value="In Transit">In Transit</option>
+            <option value="Unloading">Unloading</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </div>
         <div className="space-y-2">
           <Label>POD Status</Label>
           <select value={podStatus} onChange={(e) => setPodStatus(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
@@ -455,8 +674,20 @@ export default function Trips() {
         </h1>
         <div className="flex items-center space-x-2">
           <Button variant="ghost" size="sm" onClick={loadData} className="hover:bg-white/10"><RefreshCw className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" onClick={() => setIsReportOpen(true)} className="border-white/10 hover:bg-white/10">
+            <Filter className="mr-2 h-4 w-4" /> View Report
+          </Button>
           <Button variant="outline" size="sm" onClick={exportToCSV} className="border-white/10 hover:bg-white/10">
             <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+          <div className="relative inline-flex">
+            <input type="file" id="csv-upload" accept=".csv" className="hidden" onChange={handleImportCSV} />
+            <Button variant="outline" size="sm" onClick={() => document.getElementById('csv-upload')?.click()} className="border-white/10 hover:bg-white/10">
+              <Download className="mr-2 h-4 w-4 rotate-180" /> Import CSV
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" onClick={downloadCSVTemplate} className="border-white/10 hover:bg-white/10">
+            Template
           </Button>
           <Button onClick={handleOpenNew} className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20">
             <Plus className="mr-2 h-4 w-4" /> New Trip
@@ -466,7 +697,7 @@ export default function Trips() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="glass">
+        <Card className="glass shadow-sm transition-all hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Freight</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
@@ -476,17 +707,20 @@ export default function Trips() {
             <p className="text-xs text-muted-foreground mt-1">{filteredTrips.length} trips shown</p>
           </CardContent>
         </Card>
-        <Card className="glass">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <Card className="glass shadow-sm transition-all hover:shadow-md relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <TrendingUp className="w-16 h-16 text-green-500" />
+          </div>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
             <CardTitle className="text-sm font-medium text-muted-foreground">Net Profit (Est.)</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">{marginPercent}% Margin</Badge>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative z-10">
             <div className={`text-2xl font-bold ${totalNetProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(totalNetProfit)}</div>
             <p className="text-xs text-muted-foreground mt-1">after diesel, toll & advances</p>
           </CardContent>
         </Card>
-        <Card className="glass">
+        <Card className="glass shadow-sm transition-all hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Balance</CardTitle>
             <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -514,15 +748,22 @@ export default function Trips() {
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-medium">All Trips</CardTitle>
-          <div className="relative w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search by trip no, vehicle, party..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 bg-background/50 border-white/10 focus-visible:ring-primary"
-            />
+          <div className="flex items-center space-x-2">
+            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="h-9 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
+              <option value="All">All Time</option>
+              <option value="This Month">This Month</option>
+              <option value="Last Month">Last Month</option>
+            </select>
+            <div className="relative w-72">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search by trip no, vehicle, party..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 bg-background/50 border-white/10 focus-visible:ring-primary"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -532,6 +773,7 @@ export default function Trips() {
                 <TableRow className="border-white/10 hover:bg-white/5">
                   <TableHead>Trip No</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Vehicle & Driver</TableHead>
                   <TableHead>Party / Customer</TableHead>
                   <TableHead>Route</TableHead>
@@ -556,10 +798,19 @@ export default function Trips() {
                       <TableRow key={trip.id} className="border-white/10 hover:bg-white/5">
                         <TableCell className="font-semibold text-foreground font-mono">{trip.tripNo}</TableCell>
                         <TableCell className="text-sm">
-                          <span className="flex items-center">
-                            <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                          <span className="flex items-center text-muted-foreground whitespace-nowrap">
+                            <Calendar className="h-3.5 w-3.5 mr-1" />
                             {new Date(trip.tripDate).toLocaleDateString()}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={
+                            trip.status === 'Completed' ? 'border-green-500/50 text-green-500 bg-green-500/10 shadow-[0_0_10px_rgba(34,197,94,0.2)]' :
+                            trip.status === 'In Transit' ? 'border-blue-500/50 text-blue-500 bg-blue-500/10 shadow-[0_0_10px_rgba(59,130,246,0.2)]' :
+                            trip.status === 'Loading' ? 'border-yellow-500/50 text-yellow-500 bg-yellow-500/10 shadow-[0_0_10px_rgba(234,179,8,0.2)]' :
+                            trip.status === 'Unloading' ? 'border-purple-500/50 text-purple-500 bg-purple-500/10 shadow-[0_0_10px_rgba(168,85,247,0.2)]' :
+                            'border-white/20 text-muted-foreground bg-white/5'
+                          }>{trip.status || 'Scheduled'}</Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col text-sm">
@@ -602,14 +853,25 @@ export default function Trips() {
                           {formatCurrency(netProfit)}
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex items-center justify-center space-x-1">
-                            <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(trip)} className="h-8 w-8 p-0 hover:bg-blue-500/20 hover:text-blue-400" title="Edit Trip">
-                              <Edit className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedTrip(trip); setIsDeleteOpen(true) }} className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400" title="Delete Trip">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-white/10">
+                                <span className="sr-only">Open menu</span>
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-[160px] glass-panel border-white/10">
+                              <DropdownMenuItem onClick={() => handleOpenEdit(trip)} className="hover:bg-white/10 cursor-pointer">
+                                <Edit className="mr-2 h-4 w-4" /> Edit Trip
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => {}} className="hover:bg-white/10 cursor-pointer text-green-400 focus:text-green-400">
+                                <Send className="mr-2 h-4 w-4" /> Share via WA
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsDeleteOpen(true) }} className="hover:bg-red-500/20 text-red-400 focus:text-red-400 cursor-pointer">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Trip
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )
@@ -668,6 +930,30 @@ export default function Trips() {
             <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-2" />Delete Trip
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PDF Report Dialog */}
+      <Dialog open={isReportOpen} onOpenChange={setIsReportOpen}>
+        <DialogContent className="glass-panel border-white/20 max-w-[95vw] sm:max-w-[1200px] h-[90vh] flex flex-col p-4 print:p-0 print:border-none print:shadow-none print:h-auto print:max-w-none print:bg-white print:text-black">
+          <DialogHeader className="mb-2 print:hidden">
+            <DialogTitle>Trips Statement Report</DialogTitle>
+            <DialogDescription>View the tabular statement. Use the buttons below to print or save.</DialogDescription>
+            <div className="flex justify-end absolute right-12 top-4 space-x-2">
+              <Button variant="outline" onClick={() => window.print()} className="border-primary/20 hover:bg-primary/10">
+                <Printer className="mr-2 h-4 w-4" /> Print
+              </Button>
+              <Button onClick={handleSaveAsPDF} disabled={isGeneratingPdf} className="bg-primary hover:bg-primary/90 text-white shadow-md">
+                {isGeneratingPdf ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {isGeneratingPdf ? 'Generating...' : 'Save as PDF'}
+              </Button>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 w-full bg-white rounded-md overflow-y-auto print:overflow-visible print:p-0 border border-black/10 shadow-inner">
+            <div className="print-report-container">
+              <TripReportView trips={filteredTrips} />
+            </div>
           </div>
         </DialogContent>
       </Dialog>

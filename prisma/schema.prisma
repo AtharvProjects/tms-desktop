@@ -39,10 +39,17 @@ model Trip {
   labourCharges    Float    @default(0)
   permissionCharges Float   @default(0)
   toll             Float    @default(0)
-  advance          Float    @default(0)
+  partyAdvance     Float    @default(0)
+  driverAdvance    Float    @default(0)
+  commission       Float    @default(0)
+  maintenance      Float    @default(0)
+  extraRunning     Float    @default(0)
   extraCharges     Float    @default(0)
+  balance          Float    @default(0)
+  detentionTime    String?
   holdingDays      Int      @default(0)
   
+  status           String   @default("Scheduled") // Scheduled, Loading, In Transit, Unloading, Completed
   podStatus        String   @default("Pending") // Pending, Received, Submitted
   paymentStatus    String   @default("Pending") // Pending, Partial, Paid
   
@@ -59,6 +66,9 @@ model Vehicle {
   vehicleNumber    String   @unique
   vehicleType      String
   capacity         String?
+  
+  currentKms       Int      @default(0)
+  currentLocation  String?
   
   insuranceExpiry  DateTime?
   fitnessExpiry    DateTime?

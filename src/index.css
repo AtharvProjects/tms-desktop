@@ -79,3 +79,18 @@
     -webkit-app-region: no-drag;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-report-container, .print-report-container * {
+    visibility: visible;
+  }
+  .print-report-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

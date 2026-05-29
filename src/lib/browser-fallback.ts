@@ -219,7 +219,13 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       dieselAmount: 25000,
       driverCash: 5000,
       toll: 8000,
-      advance: 10000,
+      partyAdvance: 10000,
+      driverAdvance: 0,
+      commission: 0,
+      maintenance: 0,
+      extraRunning: 0,
+      balance: 75000,
+      detentionTime: null,
       podStatus: 'Pending',
       paymentStatus: 'Pending',
       notes: 'Urgent cargo dispatch',
@@ -241,7 +247,13 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       dieselAmount: 12000,
       driverCash: 3000,
       toll: 4500,
-      advance: 5000,
+      partyAdvance: 5000,
+      driverAdvance: 0,
+      commission: 0,
+      maintenance: 0,
+      extraRunning: 0,
+      balance: 40000,
+      detentionTime: null,
       podStatus: 'Received',
       paymentStatus: 'Paid',
       notes: 'Standard cement delivery',
@@ -263,7 +275,13 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       dieselAmount: 35000,
       driverCash: 8000,
       toll: 12000,
-      advance: 15000,
+      partyAdvance: 15000,
+      driverAdvance: 0,
+      commission: 0,
+      maintenance: 0,
+      extraRunning: 0,
+      balance: 105000,
+      detentionTime: null,
       podStatus: 'Submitted',
       paymentStatus: 'Partial',
       notes: 'Double driver route logs',
@@ -285,7 +303,13 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       dieselAmount: 40000,
       driverCash: 9000,
       toll: 15000,
-      advance: 20000,
+      partyAdvance: 20000,
+      driverAdvance: 0,
+      commission: 0,
+      maintenance: 0,
+      extraRunning: 0,
+      balance: 125000,
+      detentionTime: null,
       podStatus: 'Received',
       paymentStatus: 'Pending',
       notes: 'Avoid NH-48 toll queues',
@@ -575,7 +599,12 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
               newItem.dieselAmount = parseFloat(newItem.dieselAmount) || 0;
               newItem.driverCash = parseFloat(newItem.driverCash) || 0;
               newItem.toll = parseFloat(newItem.toll) || 0;
-              newItem.advance = parseFloat(newItem.advance) || 0;
+              newItem.partyAdvance = parseFloat(newItem.partyAdvance) || 0;
+              newItem.driverAdvance = parseFloat(newItem.driverAdvance) || 0;
+              newItem.commission = parseFloat(newItem.commission) || 0;
+              newItem.maintenance = parseFloat(newItem.maintenance) || 0;
+              newItem.extraRunning = parseFloat(newItem.extraRunning) || 0;
+              newItem.balance = parseFloat(newItem.balance) || 0;
               newItem.extraCharges = parseFloat(newItem.extraCharges) || 0;
               
               // Side effect: update driver status if trip assigned

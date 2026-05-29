@@ -115,7 +115,7 @@ export default function Dashboard() {
 
   const revenueGrowth = lastMonthRevenue === 0 ? 100 : ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
   
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
+  const formatCurrency = (value: any) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 
   // Chart Data generation
   const monthlyData = useMemo(() => {
@@ -260,7 +260,7 @@ export default function Dashboard() {
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(15,23,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                   itemStyle={{ color: '#fff' }}
-                  formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, undefined]}
+                  formatter={(value: any) => [`₹${value.toLocaleString('en-IN')}`, undefined]}
                 />
                 <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                 <Area type="monotone" name="Revenue" dataKey="revenue" stroke="hsl(267, 100%, 60%)" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />

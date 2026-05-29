@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Plus, Search, Car, Calendar, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw } from 'lucide-react'
+import { Plus, Search, Car, Calendar, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw, MoreVertical, MapPin, Gauge } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { 
   Table, 
   TableBody, 
@@ -43,6 +49,8 @@ export default function Vehicles() {
   const [pollutionExpiry, setPollutionExpiry] = useState('')
   const [driverId, setDriverId] = useState('')
   const [status, setStatus] = useState('Active')
+  const [currentKms, setCurrentKms] = useState('0')
+  const [currentLocation, setCurrentLocation] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
 
@@ -113,6 +121,8 @@ export default function Vehicles() {
           pollutionExpiry: pollutionExpiry ? new Date(pollutionExpiry) : null,
           driverId: driverId || null,
           status,
+          currentKms: parseInt(currentKms, 10) || 0,
+          currentLocation: currentLocation || null,
           notes: notes || null
         }
       })
@@ -140,6 +150,8 @@ export default function Vehicles() {
           pollutionExpiry: pollutionExpiry ? new Date(pollutionExpiry) : null,
           driverId: driverId || null,
           status,
+          currentKms: parseInt(currentKms, 10) || 0,
+          currentLocation: currentLocation || null,
           notes: notes || null
         }
       })
@@ -158,6 +170,8 @@ export default function Vehicles() {
     setPollutionExpiry(vehicle.pollutionExpiry ? new Date(vehicle.pollutionExpiry).toISOString().split('T')[0] : '')
     setDriverId(vehicle.driverId || '')
     setStatus(vehicle.status)
+    setCurrentKms(vehicle.currentKms?.toString() || '0')
+    setCurrentLocation(vehicle.currentLocation || '')
     setNotes(vehicle.notes || '')
     setError('')
     setIsEditOpen(true)
@@ -193,6 +207,8 @@ export default function Vehicles() {
     setPollutionExpiry('')
     setDriverId('')
     setStatus('Active')
+    setCurrentKms('0')
+    setCurrentLocation('')
     setNotes('')
     setError('')
     setSelectedVehicle(null)
@@ -259,6 +275,10 @@ export default function Vehicles() {
           <option value="Inactive">Inactive</option>
         </select>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2"><Label htmlFor="currentKms">Odometer (Current KMs)</Label><Input id="currentKms" type="number" value={currentKms} onChange={(e) => setCurrentKms(e.target.value)} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label htmlFor="currentLocation">Current Location</Label><Input id="currentLocation" value={currentLocation} onChange={(e) => setCurrentLocation(e.target.value)} placeholder="e.g. Base Station, In Transit" className="bg-background/50 border-white/10" /></div>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>
         <Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Engine work completed in May" className="bg-background/50 border-white/10" />
@@ -283,32 +303,35 @@ export default function Vehicles() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="glass">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <Card className="glass shadow-sm transition-all hover:shadow-md relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Fleet Size</CardTitle>
             <Truck className="h-4 w-4 text-primary" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative z-10">
             <div className="text-2xl font-bold">{vehicles.length}</div>
             <p className="text-xs text-muted-foreground mt-1">{vehicles.filter(v => v.status === 'On-Trip').length} on road now</p>
           </CardContent>
         </Card>
-        <Card className="glass">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <Card className="glass shadow-sm transition-all hover:shadow-md relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
             <CardTitle className="text-sm font-medium text-muted-foreground">Available Vehicles</CardTitle>
             <Badge className="bg-green-500/20 text-green-500 hover:bg-green-500/20 border-green-500/30">Ready</Badge>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative z-10">
             <div className="text-2xl font-bold">{vehicles.filter(v => v.status === 'Active').length}</div>
             <p className="text-xs text-muted-foreground mt-1">{vehicles.filter(v => v.status === 'Maintenance').length} in maintenance</p>
           </CardContent>
         </Card>
-        <Card className="glass animate-pulse">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <Card className="glass shadow-sm transition-all hover:shadow-md relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-5">
+            <ShieldAlert className="w-16 h-16 text-red-500" />
+          </div>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
             <CardTitle className="text-sm font-medium text-red-400">Compliance Alerts</CardTitle>
-            <ShieldAlert className="h-4 w-4 text-red-500" />
+            <ShieldAlert className="h-4 w-4 text-red-500 animate-pulse" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative z-10">
             <div className="text-2xl font-bold text-red-500">
               {vehicles.filter(v => isExpiredSoon(v.insuranceExpiry) || isExpiredSoon(v.fitnessExpiry) || isExpiredSoon(v.pollutionExpiry) || isExpiredSoon(v.permitExpiry)).length}
             </div>
@@ -345,9 +368,10 @@ export default function Vehicles() {
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-white/5">
                   <TableHead>Vehicle Registration</TableHead>
+                  <TableHead>Tracking</TableHead>
                   <TableHead>Type & Capacity</TableHead>
                   <TableHead>Assigned Driver</TableHead>
-                  <TableHead>Compliance Expiry Dates</TableHead>
+                  <TableHead>Compliance (INS / FIT / PRM / PUC)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
@@ -367,7 +391,13 @@ export default function Vehicles() {
                         <TableCell className="font-semibold text-foreground">
                           <div className="flex items-center space-x-2">
                             <Car className="h-4 w-4 text-primary" />
-                            <span className="font-mono">{vehicle.vehicleNumber}</span>
+                            <span className="font-mono uppercase">{vehicle.vehicleNumber}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col text-sm min-w-[120px]">
+                            <span className="flex items-center text-muted-foreground"><MapPin className="h-3 w-3 mr-1" /> <span className="truncate">{vehicle.currentLocation || 'Base Station'}</span></span>
+                            <span className="flex items-center text-muted-foreground mt-0.5"><Gauge className="h-3 w-3 mr-1" /> {vehicle.currentKms?.toLocaleString() || '0'} km</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -382,15 +412,14 @@ export default function Vehicles() {
                               <User className="h-3.5 w-3.5 text-muted-foreground" />
                               <span>{vehicle.driver.driverName}</span>
                             </div>
-                          ) : <span className="text-muted-foreground text-xs italic">Unassigned</span>}
+                          ) : <span className="text-muted-foreground text-xs italic flex items-center"><User className="h-3.5 w-3.5 mr-1" />Unassigned</span>}
                         </TableCell>
                         <TableCell className="text-xs">
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                            {[['Ins', ins], ['Fit', fit], ['Permit', permit], ['PUC', puc]].map(([key, info]: any) => (
-                              <div key={key} className="flex flex-col">
-                                <span className="text-muted-foreground text-[10px]">{key}</span>
-                                <span className={info.class + ' text-[11px]'}>{info.label}</span>
-                                {info.subLabel && <span className={`text-[10px] ${info.days !== null && info.days < 0 ? 'text-red-400' : info.days !== null && info.days <= 15 ? 'text-orange-400' : 'text-muted-foreground'}`}>{info.subLabel}</span>}
+                          <div className="grid grid-cols-2 gap-2 min-w-[150px]">
+                            {[['INS', ins], ['FIT', fit], ['PRM', permit], ['PUC', puc]].map(([key, info]: any) => (
+                              <div key={key} className={`flex items-center justify-between px-2 py-1 rounded-md border bg-background/50 ${info.days !== null && info.days < 0 ? 'border-red-500/50 bg-red-500/10' : info.days !== null && info.days <= 30 ? 'border-orange-500/50 bg-orange-500/10' : 'border-white/10'}`}>
+                                <span className="font-semibold text-[10px] text-muted-foreground mr-1">{key}</span>
+                                <span className={info.class + ' text-[10px] font-medium'}>{info.days !== null && info.days < 0 ? 'EXPIRED' : info.days !== null && info.days <= 30 ? `${info.days}d` : info.label}</span>
                               </div>
                             ))}
                           </div>
@@ -402,11 +431,25 @@ export default function Vehicles() {
                         </TableCell>
                         <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{vehicle.notes || '-'}</TableCell>
                         <TableCell className="text-center">
-                          <div className="flex items-center justify-center space-x-1">
-                            <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(vehicle)} className="h-8 w-8 p-0 hover:bg-blue-500/20 hover:text-blue-400" title="Edit Vehicle"><Edit className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleSetMaintenance(vehicle)} className={`h-8 w-8 p-0 ${vehicle.status === 'Maintenance' ? 'text-orange-400 bg-orange-500/10' : 'hover:bg-orange-500/20 hover:text-orange-400'}`} title={vehicle.status === 'Maintenance' ? 'Set Active' : 'Set Maintenance'}><Wrench className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedVehicle(vehicle); setIsDeleteOpen(true) }} className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400" title="Delete Vehicle"><Trash2 className="h-3.5 w-3.5" /></Button>
-                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-white/10">
+                                <span className="sr-only">Open menu</span>
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-[160px] glass-panel border-white/10">
+                              <DropdownMenuItem onClick={() => handleOpenEdit(vehicle)} className="hover:bg-white/10 cursor-pointer">
+                                <Edit className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSetMaintenance(vehicle)} className="hover:bg-white/10 cursor-pointer">
+                                <Wrench className="mr-2 h-4 w-4" /> {vehicle.status === 'Maintenance' ? 'Set Active' : 'Log Maintenance'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setSelectedVehicle(vehicle); setIsDeleteOpen(true) }} className="hover:bg-red-500/20 text-red-400 focus:text-red-400 cursor-pointer">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )
