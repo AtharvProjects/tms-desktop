@@ -5,6 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
 }
 
 model Trip {
@@ -54,6 +55,7 @@ model Trip {
   paymentStatus    String   @default("Pending") // Pending, Partial, Paid
   
   notes            String?
+  lrNumber         String?
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -83,6 +85,7 @@ model Vehicle {
   
   trips            Trip[]
   dieselLogs       DieselLog[]
+  maintenanceLogs  MaintenanceLog[]
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -103,8 +106,15 @@ model Driver {
   
   status           String   @default("Active") // Active, On-Trip, Inactive
   
+  guarantorName    String?
+  guarantorPhone   String?
+  dlImagePath      String?
+  aadhaarImagePath String?
+  panImagePath     String?
+  
   trips            Trip[]
   vehicles         Vehicle[] @relation("VehicleDriver")
+  ledgers          DriverLedger[]
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -167,10 +177,42 @@ model Invoice {
   
   subtotal         Float
   gstAmount        Float    @default(0)
+  shortageAmount   Float    @default(0)
+  damageAmount     Float    @default(0)
   totalAmount      Float
   
   amountPaid       Float    @default(0)
   status           String   @default("Unpaid") // Unpaid, Partial, Paid
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model MaintenanceLog {
+  id               String   @id @default(uuid())
+  vehicleId        String
+  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  
+  date             DateTime @default(now())
+  type             String   // Tyre, Oil, Repair, Spares, Other
+  cost             Float    @default(0)
+  odometer         Int?
+  description      String?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model DriverLedger {
+  id               String   @id @default(uuid())
+  driverId         String
+  driver           Driver   @relation(fields: [driverId], references: [id])
+  
+  date             DateTime @default(now())
+  type             String   // Advance, Expense, Salary, Settlement, Personal
+  amount           Float
+  description      String?
+  tripId           String?
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

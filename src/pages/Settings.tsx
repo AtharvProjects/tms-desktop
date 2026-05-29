@@ -6,8 +6,10 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Building, Sun, Moon, Database, Save, CheckCircle2, MessageSquare, QrCode, Smartphone, RefreshCw, Unlink, Check, Download, Upload } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { usePreferences } from '@/contexts/PreferencesContext'
 
 export default function Settings() {
+  const { t } = usePreferences();
   // Company state loaded from localStorage
   const [companyName, setCompanyName] = useState('TMS Logistics Pro')
   const [companySub, setCompanySub] = useState('Reliable Cargo & Transportation Services')
@@ -65,17 +67,17 @@ export default function Settings() {
   const handleSendTestMessage = async () => {
     setTestSent(true)
     if (window.electronAPI?.whatsapp) {
-      const testPhone = window.prompt("Enter phone number to send test message (with country code, e.g. 919876543210):")
+      const testPhone = window.prompt(t("Enter phone number to send test message (with country code, e.g. 919876543210):"))
       if (testPhone) {
         try {
-          const res = await window.electronAPI.whatsapp.send(testPhone, "Hello! This is a test message from your TMS Logistics Pro WhatsApp connection. It is successfully connected!")
+          const res = await window.electronAPI.whatsapp.send(testPhone, t("Hello! This is a test message from your TMS Logistics Pro WhatsApp connection. It is successfully connected!"))
           if (res && res.error) {
-            alert("Error sending test message: " + res.error)
+            alert(t("Error sending test message: ") + res.error)
           } else {
-            alert("Test message sent successfully!")
+            alert(t("Test message sent successfully!"))
           }
         } catch (err: any) {
-          alert("Failed to send test message: " + err.message)
+          alert(t("Failed to send test message: ") + err.message)
         }
       }
     } else {
@@ -89,41 +91,41 @@ export default function Settings() {
 
   const handleBackup = async () => {
     if (!window.electronAPI?.app?.backup) {
-      alert("Backup functionality is only available in the desktop application.")
+      alert(t("Backup functionality is only available in the desktop application."))
       return
     }
 
     try {
       const res = await window.electronAPI.app.backup()
       if (res.success && res.filePath) {
-        alert(`Backup file saved successfully at:\n${res.filePath}`)
+        alert(`${t("Backup file saved successfully at:\n")}${res.filePath}`)
       } else if (res.error) {
-        alert(`Failed to save backup: ${res.error}`)
+        alert(`${t("Failed to save backup: ")}${res.error}`)
       }
     } catch (err: any) {
-      alert(`Error creating backup: ${err.message}`)
+      alert(`${t("Error creating backup: ")}${err.message}`)
     }
   }
 
   const handleRestore = async () => {
     if (!window.electronAPI?.app?.restore) {
-      alert("Restore functionality is only available in the desktop application.")
+      alert(t("Restore functionality is only available in the desktop application."))
       return
     }
 
-    const confirm = window.confirm("WARNING: Restoring a backup will overwrite your current active database and delete any unsaved changes. The application will reload. Do you want to proceed?")
+    const confirm = window.confirm(t("WARNING: Restoring a backup will overwrite your current active database and delete any unsaved changes. The application will reload. Do you want to proceed?"))
     if (!confirm) return
 
     try {
       const res = await window.electronAPI.app.restore()
       if (res.success) {
-        alert("Database successfully restored! The app will now reload.")
+        alert(t("Database successfully restored! The app will now reload."))
         window.location.reload()
       } else if (res.error) {
-        alert(`Failed to restore database: ${res.error}`)
+        alert(`${t("Failed to restore database: ")}${res.error}`)
       }
     } catch (err: any) {
-      alert(`Error restoring database: ${err.message}`)
+      alert(`${t("Error restoring database: ")}${err.message}`)
     }
   }
 
@@ -254,7 +256,7 @@ export default function Settings() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400">
-          System Settings
+          {t('System Settings')}
         </h1>
         {success && (
           <motion.div 
@@ -264,7 +266,7 @@ export default function Settings() {
             className="flex items-center gap-1.5 bg-green-500/10 text-green-500 border border-green-500/20 px-4 py-2 rounded-xl text-sm font-medium"
           >
             <CheckCircle2 className="h-4 w-4" />
-            Settings saved successfully!
+            {t('Settings saved successfully!')}
           </motion.div>
         )}
       </div>
@@ -276,58 +278,58 @@ export default function Settings() {
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Building className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg font-bold">Company Profile Settings</CardTitle>
+                <CardTitle className="text-lg font-bold">{t('Company Profile Settings')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSaveCompany} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="companyName" className="text-sm font-semibold">Company Registered Name</Label>
+                    <Label htmlFor="companyName" className="text-sm font-semibold">{t('Company Registered Name')}</Label>
                     <Input 
                       id="companyName"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       className="bg-background/50 border-white/10 h-12 text-base"
-                      placeholder="e.g. TMS Logistics Pro"
+                      placeholder={t('e.g. TMS Logistics Pro')}
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="companySub" className="text-sm font-semibold">Company Tagline / Subtitle</Label>
+                    <Label htmlFor="companySub" className="text-sm font-semibold">{t('Company Tagline / Subtitle')}</Label>
                     <Input 
                       id="companySub"
                       value={companySub}
                       onChange={(e) => setCompanySub(e.target.value)}
                       className="bg-background/50 border-white/10 h-12 text-base"
-                      placeholder="e.g. Reliable Transport Solutions"
+                      placeholder={t('e.g. Reliable Transport Solutions')}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="companyGst" className="text-sm font-semibold">Company GSTIN No.</Label>
+                    <Label htmlFor="companyGst" className="text-sm font-semibold">{t('Company GSTIN No.')}</Label>
                     <Input 
                       id="companyGst"
                       value={companyGst}
                       onChange={(e) => setCompanyGst(e.target.value)}
                       className="bg-background/50 border-white/10 h-12 text-base font-mono uppercase"
-                      placeholder="e.g. 27GTA12345Z678"
+                      placeholder={t('e.g. 27GTA12345Z678')}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="companyAddr" className="text-sm font-semibold">Registered Office Address</Label>
+                    <Label htmlFor="companyAddr" className="text-sm font-semibold">{t('Registered Office Address')}</Label>
                     <Input 
                       id="companyAddr"
                       value={companyAddr}
                       onChange={(e) => setCompanyAddr(e.target.value)}
                       className="bg-background/50 border-white/10 h-12 text-base"
-                      placeholder="e.g. Mumbai, Maharashtra"
+                      placeholder={t('e.g. Mumbai, Maharashtra')}
                     />
                   </div>
                 </div>
                 <div className="pt-2 flex justify-end">
                   <Button type="submit" className="h-12 px-6 text-base font-semibold shadow-lg shadow-primary/25 bg-primary hover:bg-primary/95 text-primary-foreground rounded-xl">
                     <Save className="h-4 w-4 mr-2" />
-                    Save Company Info
+                    {t('Save Company Info')}
                   </Button>
                 </div>
               </form>
@@ -339,12 +341,12 @@ export default function Settings() {
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Sun className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg font-bold">Theme Settings</CardTitle>
+                <CardTitle className="text-lg font-bold">{t('Theme Settings')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Toggle between light and dark display preferences.
+                {t('Toggle between light and dark display preferences.')}
               </p>
               <div className="flex gap-4">
                 <Button
@@ -358,7 +360,7 @@ export default function Settings() {
                   }`}
                 >
                   <Sun className="h-5 w-5 text-amber-500" />
-                  Light Mode
+                  {t('Light Mode')}
                 </Button>
                 <Button
                   type="button"
@@ -371,7 +373,7 @@ export default function Settings() {
                   }`}
                 >
                   <Moon className="h-5 w-5 text-blue-500" />
-                  Dark Mode
+                  {t('Dark Mode')}
                 </Button>
               </div>
             </CardContent>
@@ -391,7 +393,7 @@ export default function Settings() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div className="flex items-center space-x-2">
                 <MessageSquare className="h-5 w-5 text-emerald-500" />
-                <CardTitle className="text-lg font-bold">WhatsApp Gateway Link</CardTitle>
+                <CardTitle className="text-lg font-bold">{t('WhatsApp Gateway Link')}</CardTitle>
               </div>
               <Badge 
                 variant="outline" 
@@ -403,7 +405,7 @@ export default function Settings() {
                       : "bg-orange-500/10 border-orange-500/20 text-orange-500 font-bold"
                 }
               >
-                {whatsappConnected ? "Connected" : whatsappStatus === 'loading' ? "Starting..." : "Disconnected"}
+                {whatsappConnected ? t("Connected") : whatsappStatus === 'loading' ? t("Starting...") : t("Disconnected")}
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -414,8 +416,8 @@ export default function Settings() {
                       <Smartphone className="h-6 w-6" />
                     </div>
                     <div className="flex-1 space-y-1">
-                      <p className="font-bold text-slate-800 dark:text-slate-200">Device Linked Successfully</p>
-                      <p className="text-xs text-muted-foreground">Active for Invoice sharing & Payment reminders</p>
+                      <p className="font-bold text-slate-800 dark:text-slate-200">{t('Device Linked Successfully')}</p>
+                      <p className="text-xs text-muted-foreground">{t('Active for Invoice sharing & Payment reminders')}</p>
                     </div>
                   </div>
 
@@ -429,12 +431,12 @@ export default function Settings() {
                       {testSent ? (
                         <>
                           <Check className="h-4 w-4 text-emerald-500 animate-bounce" />
-                          Test Sent!
+                          {t('Test Sent!')}
                         </>
                       ) : (
                         <>
                           <RefreshCw className="h-4 w-4" />
-                          Send Test Message
+                          {t('Send Test Message')}
                         </>
                       )}
                     </Button>
@@ -445,7 +447,7 @@ export default function Settings() {
                       className="flex-1 h-12 font-semibold bg-red-500 hover:bg-red-600 text-white rounded-xl flex items-center justify-center gap-2"
                     >
                       <Unlink className="h-4 w-4" />
-                      Disconnect Phone
+                      {t('Disconnect Phone')}
                     </Button>
                   </div>
                 </div>
@@ -453,12 +455,12 @@ export default function Settings() {
                 <div className="grid md:grid-cols-2 gap-6 items-center">
                   <div className="space-y-3 text-sm">
                     <p className="text-muted-foreground">
-                      Link your WhatsApp account to enable direct invoice sending and automated outstanding balance alerts.
+                      {t('Link your WhatsApp account to enable direct invoice sending and automated outstanding balance alerts.')}
                     </p>
                     <ol className="list-decimal pl-4 space-y-2 text-xs text-muted-foreground">
-                      <li>Open WhatsApp on your phone</li>
-                      <li>Tap <strong>Settings / Linked Devices</strong></li>
-                      <li>Tap <strong>Link a Device</strong> and point your camera to this screen</li>
+                      <li>{t('Open WhatsApp on your phone')}</li>
+                      <li>{t('Tap ')}<strong>{t('Settings / Linked Devices')}</strong></li>
+                      <li>{t('Tap ')}<strong>{t('Link a Device')}</strong>{t(' and point your camera to this screen')}</li>
                     </ol>
                     <div className="pt-2 flex flex-col gap-2">
                       <Button 
@@ -470,12 +472,12 @@ export default function Settings() {
                         {isLinking ? (
                           <>
                             <RefreshCw className="h-4 w-4 animate-spin" />
-                            {whatsappStatus === 'qr_ready' ? 'Waiting for Scan...' : 'Starting Client...'}
+                            {whatsappStatus === 'qr_ready' ? t('Waiting for Scan...') : t('Starting Client...')}
                           </>
                         ) : (
                           <>
                             <QrCode className="h-4 w-4" />
-                            Link Phone / Show QR Code
+                            {t('Link Phone / Show QR Code')}
                           </>
                         )}
                       </Button>
@@ -487,7 +489,7 @@ export default function Settings() {
                           onClick={handleDisconnectWA}
                           className="w-full h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
                         >
-                          Cancel / Reset if stuck
+                          {t('Cancel / Reset if stuck')}
                         </Button>
                       )}
                     </div>
@@ -507,15 +509,15 @@ export default function Settings() {
                     ) : (
                       <div className="h-40 w-40 flex flex-col items-center justify-center text-muted-foreground/50 border-2 border-dashed border-white/10 rounded-xl">
                         <QrCode className="h-10 w-10 mb-2 opacity-50" />
-                        <span className="text-xs font-medium">QR Area</span>
+                        <span className="text-xs font-medium">{t('QR Area')}</span>
                       </div>
                     )}
                     <span className="text-[10px] text-muted-foreground mt-3 font-mono uppercase tracking-wider text-center">
-                      {isLinking && !qrCode ? "Starting WhatsApp engine...\n(This can take 10-30s)" : qrCode ? "Scan QR Code to Link" : "Click 'Link Phone' to generate QR"}
+                      {isLinking && !qrCode ? t("Starting WhatsApp engine...\n(This can take 10-30s)") : qrCode ? t("Scan QR Code to Link") : t("Click 'Link Phone' to generate QR")}
                     </span>
                     {(!window.electronAPI || !window.electronAPI.app) && (
                       <div className="mt-3 p-2.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 rounded-xl text-[11px] text-center max-w-[190px] font-medium leading-normal">
-                        ⚠️ Browser Preview Mode: Scanning this mock QR will not link. Please open the Desktop App window.
+                        {t("⚠️ Browser Preview Mode: Scanning this mock QR will not link. Please open the Desktop App window.")}
                       </div>
                     )}
                   </div>
@@ -531,57 +533,57 @@ export default function Settings() {
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Database className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg font-bold">Database Metrics</CardTitle>
+                <CardTitle className="text-lg font-bold">{t('Database Metrics')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                 <div className="flex items-center space-x-2 text-primary font-bold text-sm">
                   <Database className="h-4 w-4" />
-                  <span>SQLite DB connected</span>
+                  <span>{t('SQLite DB connected')}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 font-mono">dev.db</p>
               </div>
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Trips Dispatch Logs</span>
+                  <span className="text-muted-foreground font-medium">{t('Trips Dispatch Logs')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.trips}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Vehicles In Registry</span>
+                  <span className="text-muted-foreground font-medium">{t('Vehicles In Registry')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.vehicles}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Drivers Onboarded</span>
+                  <span className="text-muted-foreground font-medium">{t('Drivers Onboarded')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.drivers}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Customer Accounts (Parties)</span>
+                  <span className="text-muted-foreground font-medium">{t('Customer Accounts (Parties)')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.parties}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Diesel Refill Records</span>
+                  <span className="text-muted-foreground font-medium">{t('Diesel Refill Records')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.dieselLogs}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Recorded Expenses</span>
+                  <span className="text-muted-foreground font-medium">{t('Recorded Expenses')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.expenses}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm border-b border-white/5 pb-2">
-                  <span className="text-muted-foreground font-medium">Generated Invoices</span>
+                  <span className="text-muted-foreground font-medium">{t('Generated Invoices')}</span>
                   <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary font-bold font-mono">
                     {stats.invoices}
                   </Badge>
@@ -594,12 +596,12 @@ export default function Settings() {
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Database className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg font-bold">Backup & Restore</CardTitle>
+                <CardTitle className="text-lg font-bold">{t('Backup & Restore')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-xs text-muted-foreground">
-                Export all transactions, fleet logs, and accounts into a database backup file, or restore from an existing backup to retrieve your data.
+                {t('Export all transactions, fleet logs, and accounts into a database backup file, or restore from an existing backup to retrieve your data.')}
               </p>
               <div className="flex flex-col gap-2 pt-2">
                 <Button
@@ -608,7 +610,7 @@ export default function Settings() {
                   className="h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md"
                 >
                   <Download className="h-4 w-4" />
-                  Backup Database
+                  {t('Backup Database')}
                 </Button>
                 <Button
                   type="button"
@@ -617,7 +619,7 @@ export default function Settings() {
                   className="h-11 border-white/10 hover:bg-white/5 text-foreground font-semibold rounded-xl flex items-center justify-center gap-2"
                 >
                   <Upload className="h-4 w-4 text-emerald-400" />
-                  Restore Database
+                  {t('Restore Database')}
                 </Button>
               </div>
             </CardContent>

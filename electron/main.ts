@@ -188,6 +188,22 @@ ipcMain.handle('app:path', (_, name: 'userData' | 'documents' | 'downloads') => 
   return app.getPath(name)
 })
 
+ipcMain.handle('app:saveImage', async (_, { base64Data, filename, subfolder = 'documents' }) => {
+  try {
+    const folderPath = path.join(app.getPath('userData'), subfolder)
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true })
+    }
+    const filePath = path.join(folderPath, filename)
+    // base64Data can be data:image/png;base64,iVBORw0KGgo...
+    const base64Str = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data
+    fs.writeFileSync(filePath, Buffer.from(base64Str, 'base64'))
+    return { success: true, filePath: `file://${filePath}` }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
 // --- WhatsApp Integration (whatsapp-web.js) ---
 let whatsappClient: Client | null = null;
 let whatsappStatus = 'disconnected'; // 'disconnected', 'loading', 'qr_ready', 'connected'

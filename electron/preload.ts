@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPath: (name: string) => ipcRenderer.invoke('app:path', name),
   app: {
     printToPdf: (htmlContent: string) => ipcRenderer.invoke('app:printToPdf', htmlContent),
+    saveImage: (args: { base64Data: string, filename: string, subfolder?: string }) => ipcRenderer.invoke('app:saveImage', args),
     backup: () => ipcRenderer.invoke('app:backup'),
     restore: () => ipcRenderer.invoke('app:restore')
   },

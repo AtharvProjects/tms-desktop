@@ -101,27 +101,28 @@ const formatDate = (dateString: string | Date | null) => {
 
 interface TripReportPDFProps {
   trips: any[];
+  t?: (key: string) => string;
 }
 
-export const TripReportPDF: React.FC<TripReportPDFProps> = ({ trips }) => {
+export const TripReportPDF: React.FC<TripReportPDFProps> = ({ trips, t = (k) => k }) => {
   return (
     <Document>
       <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.table}>
           {/* Main Header */}
           <View style={styles.tableHeaderRow}>
-            <View style={[styles.tableCol, styles.colDate]}><Text style={[styles.cellText, styles.boldText]}>DATE</Text></View>
-            <View style={[styles.tableCol, styles.colVehicle]}><Text style={[styles.cellText, styles.boldText]}>VEHICLE NO</Text></View>
-            <View style={[styles.tableCol, styles.colParty]}><Text style={[styles.cellText, styles.boldText]}>PARTY NAME</Text></View>
-            <View style={[styles.tableCol, styles.colFrom]}><Text style={[styles.cellText, styles.boldText]}>FROM</Text></View>
-            <View style={[styles.tableCol, styles.colTo]}><Text style={[styles.cellText, styles.boldText]}>TO</Text></View>
-            <View style={[styles.tableCol, styles.colSize]}><Text style={[styles.cellText, styles.boldText]}>SIZE</Text></View>
-            <View style={[styles.tableCol, styles.colRate]}><Text style={[styles.cellText, styles.boldText]}>RATE</Text></View>
-            <View style={[styles.tableCol, styles.colAdvance]}><Text style={[styles.cellText, styles.boldText]}>ADVANCE</Text></View>
-            <View style={[styles.tableCol, styles.colCommation]}><Text style={[styles.cellText, styles.boldText]}>COMMATION</Text></View>
-            <View style={[styles.tableCol, styles.colExtra]}><Text style={[styles.cellText, styles.boldText]}>EXTRA</Text></View>
-            <View style={[styles.tableCol, styles.colBalance]}><Text style={[styles.cellText, styles.boldText]}>BALANCE</Text></View>
-            <View style={[styles.tableCol, styles.colMe]}><Text style={[styles.cellText, styles.boldText]}>ME</Text></View>
+            <View style={[styles.tableCol, styles.colDate]}><Text style={[styles.cellText, styles.boldText]}>{t('DATE')}</Text></View>
+            <View style={[styles.tableCol, styles.colVehicle]}><Text style={[styles.cellText, styles.boldText]}>{t('VEHICLE NO')}</Text></View>
+            <View style={[styles.tableCol, styles.colParty]}><Text style={[styles.cellText, styles.boldText]}>{t('PARTY NAME')}</Text></View>
+            <View style={[styles.tableCol, styles.colFrom]}><Text style={[styles.cellText, styles.boldText]}>{t('FROM')}</Text></View>
+            <View style={[styles.tableCol, styles.colTo]}><Text style={[styles.cellText, styles.boldText]}>{t('TO')}</Text></View>
+            <View style={[styles.tableCol, styles.colSize]}><Text style={[styles.cellText, styles.boldText]}>{t('SIZE')}</Text></View>
+            <View style={[styles.tableCol, styles.colRate]}><Text style={[styles.cellText, styles.boldText]}>{t('RATE')}</Text></View>
+            <View style={[styles.tableCol, styles.colAdvance]}><Text style={[styles.cellText, styles.boldText]}>{t('ADVANCE')}</Text></View>
+            <View style={[styles.tableCol, styles.colCommation]}><Text style={[styles.cellText, styles.boldText]}>{t('COMMATION')}</Text></View>
+            <View style={[styles.tableCol, styles.colExtra]}><Text style={[styles.cellText, styles.boldText]}>{t('EXTRA')}</Text></View>
+            <View style={[styles.tableCol, styles.colBalance]}><Text style={[styles.cellText, styles.boldText]}>{t('BALANCE')}</Text></View>
+            <View style={[styles.tableCol, styles.colMe]}><Text style={[styles.cellText, styles.boldText]}>{t('ME')}</Text></View>
           </View>
 
           {trips.map((trip, i) => (
@@ -146,10 +147,10 @@ export const TripReportPDF: React.FC<TripReportPDFProps> = ({ trips }) => {
               <View style={styles.subRow}>
                 <View style={styles.subTableContainer}>
                   <View style={[styles.tableRow, { borderBottomWidth: 1, borderBottomColor: '#000' }]}>
-                    <View style={[styles.subColHeader, { width: '20%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>FASTAG</Text></View>
-                    <View style={[styles.subColHeader, { width: '25%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>DIESEL</Text></View>
-                    <View style={[styles.subColHeader, { width: '30%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>CASH</Text></View>
-                    <View style={[styles.subColHeader, { width: '25%', borderRightWidth: 0 }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>LIQUID</Text></View>
+                    <View style={[styles.subColHeader, { width: '20%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>{t('FASTAG')}</Text></View>
+                    <View style={[styles.subColHeader, { width: '25%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>{t('DIESEL')}</Text></View>
+                    <View style={[styles.subColHeader, { width: '30%' }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>{t('CASH')}</Text></View>
+                    <View style={[styles.subColHeader, { width: '25%', borderRightWidth: 0 }]}><Text style={[styles.cellText, styles.boldText, { fontStyle: 'italic' }]}>{t('LIQUID')}</Text></View>
                   </View>
                   <View style={styles.tableRow}>
                     <View style={[styles.subColValue, { width: '20%' }]}><Text style={styles.cellText}>{trip.toll || ''}</Text></View>

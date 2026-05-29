@@ -8,6 +8,7 @@ interface Window {
     getPath: (name: string) => Promise<string>;
     app?: {
       printToPdf: (htmlContent: string) => Promise<string>;
+      saveImage: (args: { base64Data: string, filename: string, subfolder?: string }) => Promise<{ success: boolean; filePath?: string; error: string | null }>;
       backup: () => Promise<{ success: boolean; filePath?: string; error: string | null }>;
       restore: () => Promise<{ success: boolean; error: string | null }>;
     };

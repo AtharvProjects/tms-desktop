@@ -713,10 +713,11 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       }
     },
     app: {
-      printToPdf: async (htmlContent: string) => {
+      printToPdf: async (): Promise<string> => {
         console.log("Mock printToPdf");
         return "mockBase64Data";
       },
+      saveImage: async () => ({ success: true, filePath: 'mock', error: null }),
       backup: async () => {
         console.log("Mock backup database");
         alert("Database Backup is only available when running inside the native Desktop App.");

@@ -9,10 +9,13 @@ import {
   Receipt, 
   FileText, 
   Settings,
-  Car
+  Car,
+  Languages,
+  Monitor
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { usePreferences } from '../contexts/PreferencesContext'
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs))
@@ -32,6 +35,7 @@ const navItems = [
 
 export default function AppLayout() {
   const location = useLocation()
+  const { language, setLanguage, density, setDensity, t } = usePreferences()
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light'
@@ -82,11 +86,29 @@ export default function AppLayout() {
                   />
                 )}
                 <Icon className={cn("w-5 h-5 z-10", isActive && "text-primary")} />
-                <span className="z-10">{item.name}</span>
+                <span className="z-10">{t(item.name)}</span>
               </Link>
             )
           })}
         </nav>
+
+        <div className="px-5 pb-6 pt-4 border-t border-white/5 space-y-2 mt-auto">
+          <button 
+            onClick={() => setLanguage(language === 'en' ? 'mr' : 'en')}
+            className="flex items-center gap-3 w-full px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all"
+          >
+            <Languages className="w-4 h-4" />
+            {language === 'en' ? 'मराठी (Marathi)' : 'English'}
+          </button>
+          
+          <button 
+            onClick={() => setDensity(density === 'comfortable' ? 'compact' : 'comfortable')}
+            className="flex items-center gap-3 w-full px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all"
+          >
+            <Monitor className="w-4 h-4" />
+            {t(density === 'comfortable' ? 'Compact' : 'Comfortable')} {t('Density')}
+          </button>
+        </div>
       </aside>
 
       {/* Main Content Area */}

@@ -1,6 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from 'sonner'
 import AppLayout from './layouts/AppLayout'
+import { PreferencesProvider } from './contexts/PreferencesContext'
+
+const queryClient = new QueryClient()
 
 // Pages
 import Dashboard from './pages/Dashboard'
@@ -15,8 +20,11 @@ import Settings from './pages/Settings'
 
 function App() {
   return (
-    <BrowserRouter>
-      <AnimatePresence mode="wait">
+    <QueryClientProvider client={queryClient}>
+      <PreferencesProvider>
+        <BrowserRouter>
+          <Toaster theme="dark" position="bottom-right" />
+          <AnimatePresence mode="wait">
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
@@ -30,8 +38,10 @@ function App() {
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
-      </AnimatePresence>
-    </BrowserRouter>
+          </AnimatePresence>
+        </BrowserRouter>
+      </PreferencesProvider>
+    </QueryClientProvider>
   )
 }
 
