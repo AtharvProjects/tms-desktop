@@ -35,8 +35,10 @@ export function BiltyView({ trip }: { trip: any }) {
             <tbody>
               <tr><th className="py-1 w-1/3">{t('From:')}</th><td className="font-bold">{trip.from}</td></tr>
               <tr><th className="py-1">{t('To:')}</th><td className="font-bold">{trip.to}</td></tr>
+              {trip.route && <tr><th className="py-1">{t('Via:')}</th><td className="font-medium text-sm text-gray-700">{trip.route}</td></tr>}
               <tr><th className="py-1">{t('Vehicle No:')}</th><td className="font-bold">{trip.vehicle?.vehicleNumber}</td></tr>
               <tr><th className="py-1">{t('Driver:')}</th><td>{trip.driver?.driverName}</td></tr>
+              {trip.eWayBillNumber && <tr><th className="py-1">{t('E-Way Bill:')}</th><td className="font-bold font-mono">{trip.eWayBillNumber}</td></tr>}
             </tbody>
           </table>
         </div>

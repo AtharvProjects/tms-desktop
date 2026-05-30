@@ -54,6 +54,9 @@ model Trip {
   podStatus        String   @default("Pending") // Pending, Received, Submitted
   paymentStatus    String   @default("Pending") // Pending, Partial, Paid
   
+  eWayBillNumber   String?
+  route            String?
+  
   notes            String?
   lrNumber         String?
   
@@ -82,6 +85,12 @@ model Vehicle {
   
   status           String   @default("Active")
   notes            String?
+  
+  rcImagePath        String?
+  insuranceImagePath String?
+  fitnessImagePath   String?
+  permitImagePath    String?
+
   
   trips            Trip[]
   dieselLogs       DieselLog[]
@@ -133,6 +142,7 @@ model Party {
   status           String   @default("Active")
   
   trips            Trip[]
+  ledgers          PartyLedger[]
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -212,6 +222,22 @@ model DriverLedger {
   type             String   // Advance, Expense, Salary, Settlement, Personal
   amount           Float
   description      String?
+  tripId           String?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model PartyLedger {
+  id               String   @id @default(uuid())
+  partyId          String
+  party            Party    @relation(fields: [partyId], references: [id])
+  
+  date             DateTime @default(now())
+  type             String   // Invoice, Payment, Adjustment
+  amount           Float
+  description      String?
+  invoiceId        String?
   tripId           String?
   
   createdAt        DateTime @default(now())

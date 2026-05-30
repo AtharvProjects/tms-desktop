@@ -89,9 +89,10 @@ export default function Invoices() {
   };
 
   const handleCreateInvoice = async (data: InvoiceFormValues, calculatedSubtotal: number, calculatedGst: number, calculatedTotal: number) => {
+    const { gstPercentage, ...restData } = data;
     createMutation.mutate({
       data: {
-        ...data,
+        ...restData,
         date: new Date(data.date),
         subtotal: calculatedSubtotal,
         gstAmount: calculatedGst,

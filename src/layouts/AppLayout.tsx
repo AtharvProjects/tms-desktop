@@ -44,6 +44,11 @@ export default function AppLayout() {
     } else {
       document.documentElement.classList.remove('dark')
     }
+
+    // Auto-initialize WhatsApp client on startup if it was previously connected
+    if (localStorage.getItem('whatsappConnected') === 'true' && window.electronAPI?.whatsapp) {
+      window.electronAPI.whatsapp.init()
+    }
   }, [])
 
   return (

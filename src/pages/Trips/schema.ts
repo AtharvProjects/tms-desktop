@@ -11,6 +11,8 @@ export const tripSchema = z.object({
   material: z.string().nullable().optional(),
   sizeWeight: z.string().nullable().optional(),
   lrNumber: z.string().nullable().optional(),
+  eWayBillNumber: z.string().nullable().optional(),
+  route: z.string().nullable().optional(),
   billingType: z.string().default('Fixed'),
   freightAmount: z.coerce.number().min(0).default(0),
   dieselAmount: z.coerce.number().min(0).default(0),

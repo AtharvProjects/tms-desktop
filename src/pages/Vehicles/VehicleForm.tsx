@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { Camera } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehicleSchema } from './schema';
 import type { VehicleFormValues } from './schema';
@@ -18,7 +20,8 @@ interface VehicleFormProps {
 
 export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmitting }: VehicleFormProps) {
   const { t } = usePreferences();
-  const { register, handleSubmit, formState: { errors } } = useForm<VehicleFormValues>({
+  const [uploadError, setUploadError] = useState('');
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema) as any,
     defaultValues: {
       vehicleNumber: initialData?.vehicleNumber || '',
@@ -32,12 +35,43 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
       status: initialData?.status || 'Active',
       currentKms: initialData?.currentKms || 0,
       currentLocation: initialData?.currentLocation || '',
+      rcImagePath: initialData?.rcImagePath || '',
+      insuranceImagePath: initialData?.insuranceImagePath || '',
+      fitnessImagePath: initialData?.fitnessImagePath || '',
+      permitImagePath: initialData?.permitImagePath || '',
       notes: initialData?.notes || '',
     }
   });
 
+  const rcImagePath = watch('rcImagePath');
+  const insuranceImagePath = watch('insuranceImagePath');
+  const fitnessImagePath = watch('fitnessImagePath');
+  const permitImagePath = watch('permitImagePath');
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, fieldName: keyof VehicleFormValues) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      try {
+        const ext = file.name.split('.').pop();
+        const filename = `veh_doc_${Date.now()}.${ext}`;
+        const res = await window.electronAPI.app?.saveImage({ base64Data, filename, subfolder: 'vehicle_docs' });
+        if (res?.success && res.filePath) {
+          setValue(fieldName, res.filePath);
+          setUploadError('');
+        } else {
+          setUploadError(res?.error || 'Failed to save image');
+        }
+      } catch (err: any) { setUploadError(err.message); }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+      {uploadError && <div className="bg-red-500/15 border border-red-500/30 text-red-500 text-sm p-3 rounded-lg">{uploadError}</div>}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="vehicleNumber">{t('Registration Number *')}</Label>
@@ -87,7 +121,41 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 pt-2 border-t border-white/10">
+        <Label>{t('Document Vault (Upload Scans)')}</Label>
+        <div className="grid grid-cols-4 gap-2">
+          <div className="flex flex-col space-y-1">
+            <span className="text-xs text-muted-foreground">{t('RC Book')}</span>
+            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-xs">
+              <Camera className="h-3.5 w-3.5 mr-1" /> {rcImagePath ? t('Uploaded') : t('Upload')}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'rcImagePath')} />
+            </Label>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-xs text-muted-foreground">{t('Insurance')}</span>
+            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-xs">
+              <Camera className="h-3.5 w-3.5 mr-1" /> {insuranceImagePath ? t('Uploaded') : t('Upload')}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'insuranceImagePath')} />
+            </Label>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-xs text-muted-foreground">{t('Fitness')}</span>
+            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-xs">
+              <Camera className="h-3.5 w-3.5 mr-1" /> {fitnessImagePath ? t('Uploaded') : t('Upload')}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'fitnessImagePath')} />
+            </Label>
+          </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-xs text-muted-foreground">{t('Permit')}</span>
+            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-xs">
+              <Camera className="h-3.5 w-3.5 mr-1" /> {permitImagePath ? t('Uploaded') : t('Upload')}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'permitImagePath')} />
+            </Label>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 pt-2 border-t border-white/10">
         <Label htmlFor="status">{t('Status')}</Label>
         <select id="status" {...register('status')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
           <option value="Active">{t('Active')}</option>

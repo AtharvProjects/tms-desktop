@@ -421,22 +421,37 @@ ipcMain.handle('app:printToPdf', async (_, htmlContent: string) => {
         </html>
       `;
 
-    printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlToLoad)}`);
+    const tempFilePath = path.join(app.getPath('temp'), `print_${Date.now()}.html`);
+    fs.writeFileSync(tempFilePath, htmlToLoad, 'utf-8');
+    
+    printWindow.loadFile(tempFilePath);
 
-    printWindow.webContents.on('did-finish-load', async () => {
-      try {
-        const pdfBuffer = await printWindow.webContents.printToPDF({
-          printBackground: true,
-          pageSize: 'A4',
-          marginType: 'printableArea'
-        });
-        
-        printWindow.destroy();
-        resolve(pdfBuffer.toString('base64'));
-      } catch (error) {
-        printWindow.destroy();
-        reject(error);
-      }
+    printWindow.webContents.once('did-finish-load', () => {
+      setTimeout(async () => {
+        if (printWindow.isDestroyed()) {
+          reject(new Error("Window was destroyed before printing."));
+          return;
+        }
+        try {
+          const pdfBuffer = await printWindow.webContents.printToPDF({
+            printBackground: true,
+            pageSize: 'A4',
+            marginType: 'printableArea'
+          });
+          
+          if (!printWindow.isDestroyed()) {
+            printWindow.destroy();
+          }
+          try { fs.unlinkSync(tempFilePath); } catch (e) {}
+          resolve(pdfBuffer.toString('base64'));
+        } catch (error) {
+          if (!printWindow.isDestroyed()) {
+            printWindow.destroy();
+          }
+          try { fs.unlinkSync(tempFilePath); } catch (e) {}
+          reject(error);
+        }
+      }, 1000);
     });
   });
 });

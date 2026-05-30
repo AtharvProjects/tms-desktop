@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Phone, Mail, MapPin, DollarSign, Building, MessageSquare, RefreshCw, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Phone, Mail, MapPin, DollarSign, Building, MessageSquare, RefreshCw, Edit, Trash2, FileText, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -23,7 +23,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
-import type { Party } from '@prisma/client';
+import type { Party, PartyLedger } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
 
 export default function Parties() {
@@ -35,6 +35,12 @@ export default function Parties() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPartyAction, setSelectedPartyAction] = useState<Party | null>(null);
+  
+  // Ledger and Payment State
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('0');
+  const [paymentNotes, setPaymentNotes] = useState('');
   
   // Form state
   const [companyName, setCompanyName] = useState('');
@@ -64,6 +70,15 @@ export default function Parties() {
   const createMutation = usePrismaMutation<any, Party>('party', 'create', [['parties', 'all']]);
   const updateMutation = usePrismaMutation<any, Party>('party', 'update', [['parties', 'all']]);
   const deleteMutation = usePrismaMutation<any, Party>('party', 'delete', [['parties', 'all']]);
+  const createLedgerMutation = usePrismaMutation<any, PartyLedger>('partyLedger', 'create', [['parties', 'all'], ['partyLedger']]);
+
+  const { data: ledgerData = [] } = usePrismaQuery<PartyLedger[]>(
+    ['partyLedger', selectedPartyAction?.id || ''],
+    'partyLedger',
+    'findMany',
+    { where: { partyId: selectedPartyAction?.id }, orderBy: { date: 'desc' } },
+    { enabled: !!selectedPartyAction?.id && isLedgerOpen }
+  );
 
   const renderReminderContent = (party: Party | null) => {
     if (!party) return null;
@@ -126,12 +141,22 @@ export default function Parties() {
           try {
             const element = document.querySelector('#hidden-reminder-capture > div');
             if (!element) throw new Error("Reminder element not found in capture container");
-            let stylesHtml = '';
-            for (const sheet of Array.from(document.styleSheets)) {
-              try { const rules = Array.from(sheet.cssRules); stylesHtml += `<style>${rules.map(r => r.cssText).join('\n')}</style>\n`; } catch (e) {}
-            }
-            const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { margin: 0; padding: 40px; font-family: sans-serif; background: white !important; color: #0f172a !important; }</style>${stylesHtml}</head><body>${element.outerHTML}</body></html>`;
-            const pdfBase64 = await window.electronAPI.app!.printToPdf(fullHtml);
+            const htmlContent = `
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <meta charset="utf-8">
+                  <script src="https://cdn.tailwindcss.com"></script>
+                  <style>
+                    body { margin: 0; padding: 40px; font-family: sans-serif; background: white !important; color: #0f172a !important; }
+                  </style>
+                </head>
+                <body>
+                  ${element.outerHTML}
+                </body>
+              </html>
+            `;
+            const pdfBase64 = await window.electronAPI.app!.printToPdf(htmlContent);
             const res = await window.electronAPI.whatsapp!.sendMedia({ phone: party.phone!, caption: text, base64Data: pdfBase64, mimetype: 'application/pdf', filename: `Outstanding_Statement_${party.companyName.replace(/\s+/g, '_')}.pdf` });
             if (res && res.error) { alert('Error sending WhatsApp reminder: ' + res.error); } else { alert(`WhatsApp reminder sent to ${party.companyName}!`); }
           } catch (err: any) { alert('WhatsApp send failed: ' + err.message); } finally { setIsSendingWA(false); setSelectedParty(null); }
@@ -140,6 +165,35 @@ export default function Parties() {
       }
     }
     alert("Please connect WhatsApp in Settings to send reminders automatically.");
+  };
+
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const amt = parseFloat(paymentAmount);
+    if (!selectedPartyAction || isNaN(amt) || amt <= 0) { setError(t('Please enter a valid payment amount')); return; }
+    
+    const newBalance = Math.max(0, (selectedPartyAction.outstandingBalance || 0) - amt);
+    
+    updateMutation.mutate({
+      where: { id: selectedPartyAction.id },
+      data: { outstandingBalance: newBalance }
+    }, {
+      onSuccess: () => {
+        createLedgerMutation.mutate({
+          data: {
+            partyId: selectedPartyAction.id,
+            type: 'Payment',
+            amount: amt,
+            description: paymentNotes || t('Payment Received'),
+            date: new Date()
+          }
+        }, {
+          onSuccess: () => setIsPaymentOpen(false)
+        });
+      },
+      onError: (err: any) => setError(err.message)
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -159,7 +213,18 @@ export default function Parties() {
         status
       }
     }, {
-      onSuccess: () => {
+      onSuccess: (data: Party) => {
+        if (parseFloat(outstandingBalance) > 0) {
+          createLedgerMutation.mutate({
+            data: {
+              partyId: data.id,
+              type: 'Adjustment',
+              amount: parseFloat(outstandingBalance),
+              description: t('Initial Outstanding Balance'),
+              date: new Date()
+            }
+          });
+        }
         setIsOpen(false);
         resetForm();
       },
@@ -390,8 +455,16 @@ export default function Parties() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-center space-x-1">
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedPartyAction(party); setIsLedgerOpen(true); }} className="h-8 w-8 p-0 hover:bg-purple-500/20 hover:text-purple-400" title={t('View Khata (Ledger)')}>
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
                           {(party.outstandingBalance || 0) > 0 && (
-                            <Button variant="ghost" size="sm" onClick={() => handleWhatsAppReminder(party)} disabled={isSendingWA && selectedParty?.id === party.id} className="h-8 w-8 p-0 text-green-500 hover:bg-green-500/10" title={t('Send WhatsApp Reminder')}>
+                            <Button variant="ghost" size="sm" onClick={() => { setSelectedPartyAction(party); setPaymentAmount('0'); setPaymentNotes(''); setIsPaymentOpen(true); }} className="h-8 w-8 p-0 text-green-500 hover:bg-green-500/10" title={t('Record Payment')}>
+                              <CheckCircle className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {(party.outstandingBalance || 0) > 0 && (
+                            <Button variant="ghost" size="sm" onClick={() => handleWhatsAppReminder(party)} disabled={isSendingWA && selectedParty?.id === party.id} className="h-8 w-8 p-0 text-emerald-500 hover:bg-emerald-500/10" title={t('Send WhatsApp Reminder')}>
                               {isSendingWA && selectedParty?.id === party.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
                             </Button>
                           )}
@@ -435,6 +508,65 @@ export default function Parties() {
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setIsDeleteOpen(false)}>{t('Cancel')}</Button>
             <Button className="bg-red-600 hover:bg-red-700 text-white" disabled={deleteMutation.isPending} onClick={handleDelete}><Trash2 className="h-4 w-4 mr-2" />{t('Delete Party')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{t('Record Payment')}</DialogTitle>
+            <DialogDescription>{t('Record a payment from ')} {selectedPartyAction?.companyName}. {t('Current Outstanding:')} <span className="font-bold text-orange-500">{formatCurrency(selectedPartyAction?.outstandingBalance || 0)}</span></DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePaymentSubmit} className="space-y-4 py-4">
+            {error && <div className="bg-red-500/15 border border-red-500/30 text-red-500 text-sm p-3 rounded-lg">{error}</div>}
+            <div className="space-y-2"><Label>{t('Payment Amount (₹) *')}</Label><Input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="bg-background/50 border-white/10 font-bold" required /></div>
+            <div className="space-y-2"><Label>{t('Notes')}</Label><Input placeholder={t('e.g. NEFT Transfer / Check No.')} value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} className="bg-background/50 border-white/10" /></div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="ghost" onClick={() => setIsPaymentOpen(false)}>{t('Cancel')}</Button>
+              <Button type="submit" disabled={updateMutation.isPending || createLedgerMutation.isPending} className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="h-4 w-4 mr-2" />{t('Save Payment')}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[700px] max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t('Party Khata (Ledger) - ')}{selectedPartyAction?.companyName}</DialogTitle>
+            <DialogDescription>{t('Transaction history. Current Outstanding Balance: ')}<span className="font-bold text-orange-500">{formatCurrency(selectedPartyAction?.outstandingBalance || 0)}</span></DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto mt-4 rounded-md border border-white/10">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-white/10 hover:bg-white/5">
+                  <TableHead>{t('Date')}</TableHead>
+                  <TableHead>{t('Type')}</TableHead>
+                  <TableHead>{t('Description')}</TableHead>
+                  <TableHead className="text-right">{t('Amount (₹)')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ledgerData.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">{t('No ledger entries found.')}</TableCell></TableRow>
+                ) : (
+                  ledgerData.map((entry) => (
+                    <TableRow key={entry.id} className="border-white/10 hover:bg-white/5">
+                      <TableCell>{new Date(entry.date).toLocaleDateString('en-IN')}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={entry.type === 'Invoice' || entry.type === 'Adjustment' ? 'text-orange-400 border-orange-500/30' : 'text-green-400 border-green-500/30'}>
+                          {t(entry.type)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">{entry.description || '-'}</TableCell>
+                      <TableCell className={`text-right font-bold ${entry.type === 'Invoice' || entry.type === 'Adjustment' ? 'text-orange-500' : 'text-green-500'}`}>
+                        {entry.type === 'Invoice' || entry.type === 'Adjustment' ? '+' : '-'}{formatCurrency(entry.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
         </DialogContent>
       </Dialog>

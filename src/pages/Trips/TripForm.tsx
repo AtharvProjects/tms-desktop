@@ -36,6 +36,8 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       material: initialData?.material || '',
       sizeWeight: initialData?.sizeWeight || '',
       lrNumber: initialData?.lrNumber || '',
+      eWayBillNumber: initialData?.eWayBillNumber || '',
+      route: initialData?.route || '',
       billingType: initialData?.billingType || 'Fixed',
       freightAmount: initialData?.freightAmount || 0,
       dieselAmount: initialData?.dieselAmount || 0,
@@ -113,6 +115,10 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
           <Label>{t('LR / Bilty Number')}</Label>
           <Input placeholder="e.g. LR-1001" {...register('lrNumber')} className="bg-background/50 border-white/10 font-mono" />
         </div>
+        <div className="space-y-2">
+          <Label>{t('E-Way Bill Number')}</Label>
+          <Input placeholder="12-digit E-Way Bill" {...register('eWayBillNumber')} className="bg-background/50 border-white/10 font-mono uppercase" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -133,9 +139,10 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+      <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
         <div className="space-y-2"><Label>{t('From Route Location *')}</Label><Input placeholder="Dispatch City" {...register('from')} className="bg-background/50 border-white/10" /></div>
         <div className="space-y-2"><Label>{t('To Route Location *')}</Label><Input placeholder="Delivery Destination" {...register('to')} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>{t('Via / Route Points')}</Label><Input placeholder="e.g. Surat - Vadodara" {...register('route')} className="bg-background/50 border-white/10" /></div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
