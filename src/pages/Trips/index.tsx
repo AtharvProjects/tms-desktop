@@ -56,6 +56,9 @@ export default function Trips() {
   const [isSettleOpen, setIsSettleOpen] = useState(false);
   const [isLrOpen, setIsLrOpen] = useState(false);
   const [isSendingWA, setIsSendingWA] = useState(false);
+  const [isSendExcelOpen, setIsSendExcelOpen] = useState(false);
+  const [excelPhone, setExcelPhone] = useState('');
+  const [isSendingExcel, setIsSendingExcel] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<TripWithRelations | null>(null);
 
   const { data: trips = [], isLoading, refetch } = usePrismaQuery<TripWithRelations[]>(
@@ -244,6 +247,72 @@ export default function Trips() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSendExcelWA = async () => {
+    if (!excelPhone) {
+      alert("Please enter a phone number");
+      return;
+    }
+    setIsSendingExcel(true);
+    
+    const headers = ['Trip No', 'Date', 'Report Date', 'Loading Date', 'Unloading Date', 'Vehicle', 'Driver', 'Party', 'From', 'To', 'Material', 'Billing Type', 'Freight', 'Party Advance', 'Driver Advance', 'Balance', 'Commission', 'Maintenance', 'Fastag/Toll', 'Diesel', 'Liquid Diesel', 'Driver Cash', 'Extra Running', 'Detention Time', 'Extra Charges', 'Net Profit', 'POD Status', 'Payment Status', 'Notes'];
+    const rows = filteredTrips.map(t => [
+      t.tripNo,
+      new Date(t.tripDate).toLocaleDateString(),
+      t.reportDate ? new Date(t.reportDate).toLocaleDateString() : '',
+      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString() : '',
+      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString() : '',
+      t.vehicle?.vehicleNumber || '',
+      t.driver?.driverName || '',
+      t.party?.companyName || '',
+      t.from,
+      t.to,
+      t.material || '',
+      t.billingType,
+      t.freightAmount,
+      t.partyAdvance,
+      t.driverAdvance,
+      t.balance,
+      t.commission,
+      t.maintenance,
+      t.toll,
+      t.dieselAmount,
+      t.liquidDiesel,
+      t.driverCash,
+      t.extraRunning,
+      t.detentionTime || '',
+      t.extraCharges,
+      calcNetProfit(t),
+      t.podStatus,
+      t.paymentStatus,
+      t.notes || ''
+    ]);
+    const csvContent = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    
+    const base64Data = btoa(unescape(encodeURIComponent(csvContent)));
+    
+    try {
+      const res = await window.electronAPI.whatsapp?.sendMedia({
+        phone: excelPhone,
+        caption: "Here is the trips report.",
+        base64Data,
+        mimetype: 'text/csv',
+        filename: `trips_report_${new Date().toISOString().split('T')[0]}.csv`
+      });
+
+      if (res && res.error) {
+        alert('Error sending WhatsApp message: ' + res.error);
+      } else {
+        alert('Report sent successfully!');
+        setIsSendExcelOpen(false);
+        setExcelPhone('');
+      }
+    } catch (err: any) {
+      alert('WhatsApp send failed: ' + err.message);
+    }
+    
+    setIsSendingExcel(false);
+  };
+
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -314,6 +383,7 @@ export default function Trips() {
               </DropdownMenuTrigger>
               <DropdownMenuContent className="glass-panel border-white/10">
                 <DropdownMenuItem onClick={exportToCSV}><Download className="mr-2 h-4 w-4" /> {t('Export trips to CSV')}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsSendExcelOpen(true)}><Send className="mr-2 h-4 w-4" /> {t('Send trips via WA')}</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => document.getElementById('csv-upload')?.click()}><TrendingUp className="mr-2 h-4 w-4" /> {t('Import trips from CSV')}</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => {
                   const csvContent = CSV_HEADERS.join(',') + '\\n';
@@ -588,6 +658,34 @@ export default function Trips() {
           </div>
           <div className="p-8 bg-white min-h-[800px] w-full text-black overflow-x-auto print-report-container">
             <TripReportView trips={filteredTrips} dateFilter={dateFilter} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSendExcelOpen} onOpenChange={setIsSendExcelOpen}>
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{t('Send Report to WhatsApp')}</DialogTitle>
+            <DialogDescription>{t('Enter WhatsApp number to receive the trips report (CSV).')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('WhatsApp Number')}</label>
+              <Input 
+                placeholder="e.g. 919876543210" 
+                value={excelPhone} 
+                onChange={(e) => setExcelPhone(e.target.value)} 
+                className="bg-background/50 border-white/10"
+              />
+              <p className="text-xs text-muted-foreground">{t('Include country code without + (e.g. 91 for India)')}</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setIsSendExcelOpen(false)}>{t('Cancel')}</Button>
+              <Button onClick={handleSendExcelWA} disabled={isSendingExcel} className="bg-green-600 hover:bg-green-700 text-white">
+                <Send className="w-4 h-4 mr-2" />
+                {isSendingExcel ? t('Sending...') : t('Send via WA')}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

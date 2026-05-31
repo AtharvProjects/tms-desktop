@@ -9,7 +9,7 @@ const { Client, LocalAuth, MessageMedia } = pkg
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const logPath = path.join('/Users/ashitosh/Downloads/tms-desktop', 'electron-debug.log');
+const logPath = path.join(app.getPath('userData'), 'electron-debug.log');
 fs.writeFileSync(logPath, '--- Electron Debug Log Start ---\n');
 function logToFile(...args: any[]) {
   const msg = '[INFO] ' + args.map(arg => {
@@ -113,11 +113,23 @@ ipcMain.handle('app:restore', async (event) => {
   }
 });
 
+// Initialize Prisma DB file
+const userDbPath = path.join(app.getPath('userData'), 'tms-database.db');
+if (!fs.existsSync(userDbPath)) {
+  const templateDbPath = path.join(__dirname, '../prisma/dev.db');
+  if (fs.existsSync(templateDbPath)) {
+    fs.copyFileSync(templateDbPath, userDbPath);
+    logToFile('[Main] Copied template dev.db to userData.');
+  } else {
+    logToFile('[Main] Template dev.db not found at ' + templateDbPath);
+  }
+}
+
 // Initialize Prisma
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL || `file:${path.join(app.getPath('userData'), 'tms-database.db')}`
+      url: process.env.DATABASE_URL || `file:${userDbPath}`
     }
   }
 })
@@ -376,7 +388,11 @@ ipcMain.handle('whatsapp:sendMedia', async (_, { phone, caption, base64Data, mim
     const base64Str = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data;
     
     const media = new MessageMedia(mimetype, base64Str, filename);
-    await whatsappClient.sendMessage(chatId, media, { caption });
+    const sendOptions: any = { caption };
+    if (!mimetype.startsWith('image/') && !mimetype.startsWith('video/')) {
+      sendOptions.sendMediaAsDocument = true;
+    }
+    await whatsappClient.sendMessage(chatId, media, sendOptions);
     return { success: true };
   } catch (err: any) {
     console.error('WhatsApp sendMedia error:', err);
