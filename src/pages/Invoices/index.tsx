@@ -242,13 +242,7 @@ export default function Invoices() {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Billed To:')}</p>
             <p className="font-bold text-slate-800 text-lg">{invoice.trip?.party?.companyName}</p>
-            <p className="text-slate-600 text-sm mt-1">{invoice.trip?.party?.address || t('No Address Listed')}</p>
-            {invoice.trip?.party?.gstNumber && (
-              <p className="font-mono text-xs mt-2 text-slate-700 bg-slate-50 inline-block px-2 py-1 rounded border border-slate-200">
-                GSTIN: <strong>{invoice.trip.party.gstNumber}</strong>
-              </p>
-            )}
-          </div>
+            </div>
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Trip Details:')}</p>
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-sm">

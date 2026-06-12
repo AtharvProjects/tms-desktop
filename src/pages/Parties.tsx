@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Phone, Mail, MapPin, DollarSign, Building, MessageSquare, RefreshCw, Edit, Trash2, FileText, CheckCircle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, RefreshCw, Building, DollarSign, Phone, FileText, CheckCircle, MessageSquare } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -46,9 +46,6 @@ export default function Parties() {
   const [companyName, setCompanyName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [gstNumber, setGstNumber] = useState('');
-  const [address, setAddress] = useState('');
   const [outstandingBalance, setOutstandingBalance] = useState('0');
   const [status, setStatus] = useState('Active');
   const [error, setError] = useState('');
@@ -100,9 +97,7 @@ export default function Parties() {
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('Statement For:')}</p>
           <p className="font-bold text-slate-800 mt-1 text-base">{party.companyName}</p>
           {party.contactPerson && <p className="text-slate-600 font-medium">{t('Attn:')} {party.contactPerson}</p>}
-          <p className="text-slate-600 mt-1">{party.address || t('No Address Listed')}</p>
           {party.phone && <p className="text-slate-600 font-mono text-xs mt-1">{t('Phone:')} {party.phone}</p>}
-          {party.gstNumber && <p className="font-mono text-xs mt-2 text-slate-700">GSTIN: <strong>{party.gstNumber}</strong></p>}
         </div>
         <div className="bg-orange-50 border border-orange-100 text-orange-800 rounded-lg p-4 my-2 text-xs leading-relaxed">
           <p className="font-bold mb-1">{t('Friendly Payment Reminder:')}</p>
@@ -206,9 +201,6 @@ export default function Parties() {
         companyName,
         contactPerson: contactPerson || null,
         phone: phone || null,
-        email: email || null,
-        gstNumber: gstNumber || null,
-        address: address || null,
         outstandingBalance: parseFloat(outstandingBalance) || 0,
         status
       }
@@ -244,9 +236,6 @@ export default function Parties() {
         companyName,
         contactPerson: contactPerson || null,
         phone: phone || null,
-        email: email || null,
-        gstNumber: gstNumber || null,
-        address: address || null,
         outstandingBalance: parseFloat(outstandingBalance) || 0,
         status
       }
@@ -264,9 +253,6 @@ export default function Parties() {
     setCompanyName(party.companyName);
     setContactPerson(party.contactPerson || '');
     setPhone(party.phone || '');
-    setEmail(party.email || '');
-    setGstNumber(party.gstNumber || '');
-    setAddress(party.address || '');
     setOutstandingBalance(String(party.outstandingBalance || 0));
     setStatus(party.status);
     setError('');
@@ -288,9 +274,6 @@ export default function Parties() {
     setCompanyName('');
     setContactPerson('');
     setPhone('');
-    setEmail('');
-    setGstNumber('');
-    setAddress('');
     setOutstandingBalance('0');
     setStatus('Active');
     setError('');
@@ -302,7 +285,6 @@ export default function Parties() {
     .filter(p =>
       p.companyName.toLowerCase().includes(search.toLowerCase()) ||
       (p.contactPerson && p.contactPerson.toLowerCase().includes(search.toLowerCase())) ||
-      (p.gstNumber && p.gstNumber.toLowerCase().includes(search.toLowerCase())) ||
       (p.phone && p.phone.includes(search))
     );
 
@@ -315,13 +297,8 @@ export default function Parties() {
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2"><Label>{t('Phone Number')}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('e.g. 9876543210')} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('Email Address')}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('e.g. info@client.com')} className="bg-background/50 border-white/10" /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2"><Label>{t('GST Number')}</Label><Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder={t('e.g. 22AAAAA0000A1Z5')} className="bg-background/50 border-white/10 font-mono uppercase" /></div>
         <div className="space-y-2"><Label>{t('Outstanding Balance (₹)')}</Label><Input type="number" value={outstandingBalance} onChange={(e) => setOutstandingBalance(e.target.value)} className="bg-background/50 border-white/10" /></div>
       </div>
-      <div className="space-y-2"><Label>{t('Address')}</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('e.g. Phase 2, Industrial Area, Pune')} className="bg-background/50 border-white/10" /></div>
       <div className="space-y-2">
         <Label>{t('Status')}</Label>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
@@ -407,8 +384,7 @@ export default function Parties() {
                 <TableRow className="border-white/10 hover:bg-white/5">
                   <TableHead>{t('Company Name')}</TableHead>
                   <TableHead>{t('Contact Person')}</TableHead>
-                  <TableHead>{t('Phone / Email')}</TableHead>
-                  <TableHead>{t('GSTIN')}</TableHead>
+                  <TableHead>{t('Phone')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead className="text-right">{t('Outstanding')}</TableHead>
                   <TableHead className="text-center">{t('Actions')}</TableHead>
@@ -423,26 +399,20 @@ export default function Parties() {
                   filteredParties.map((party) => (
                     <TableRow key={party.id} className="border-white/10 hover:bg-white/5">
                       <TableCell className="font-semibold text-foreground">
-                        <div className="flex flex-col">
-                          <span>{party.companyName}</span>
-                          <span className="text-xs text-muted-foreground font-normal flex items-center mt-1">
-                            <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />{party.address || t('No Address')}
-                          </span>
-                        </div>
+                        {party.companyName}
                       </TableCell>
                       <TableCell>{party.contactPerson || '-'}</TableCell>
                       <TableCell>
                         <div className="flex flex-col text-sm space-y-0.5">
-                          {party.phone && (
+                          {party.phone ? (
                             <a href={`tel:${party.phone}`} className="flex items-center text-primary hover:text-primary/80 transition-colors" title="Click to call">
                               <Phone className="h-3 w-3 mr-1" />{party.phone}
                             </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
                           )}
-                          {party.email && <span className="flex items-center text-muted-foreground"><Mail className="h-3 w-3 mr-1" />{party.email}</span>}
-                          {!party.phone && !party.email && <span className="text-muted-foreground">-</span>}
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{party.gstNumber || '-'}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={party.status === 'Active' ? 'border-green-500/30 text-green-500 bg-green-500/10' : 'border-red-500/30 text-red-500 bg-red-500/10'}>
                           {t(party.status)}

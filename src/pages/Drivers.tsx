@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Phone, MapPin, DollarSign, Users, CheckCircle, Edit, Trash2, PlusCircle, RefreshCw, Calendar, FileText, Camera } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, RefreshCw, Users, DollarSign, Phone, FileText, CheckCircle, PlusCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -50,21 +50,9 @@ export default function Drivers() {
   // Form State
   const [driverName, setDriverName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [licenseExpiry, setLicenseExpiry] = useState('');
-  const [aadhaarNumber, setAadhaarNumber] = useState('');
-  const [panNumber, setPanNumber] = useState('');
   const [salary, setSalary] = useState('0');
   const [advanceBalance, setAdvanceBalance] = useState('0');
-  const [address, setAddress] = useState('');
   const [status, setStatus] = useState('Active');
-  
-  // New Fields: Guarantor & Docs
-  const [guarantorName, setGuarantorName] = useState('');
-  const [guarantorPhone, setGuarantorPhone] = useState('');
-  const [dlImagePath, setDlImagePath] = useState('');
-  const [aadhaarImagePath, setAadhaarImagePath] = useState('');
-  const [panImagePath, setPanImagePath] = useState('');
 
   // Ledger State
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
@@ -167,19 +155,9 @@ export default function Drivers() {
       data: {
         driverName,
         mobileNumber,
-        licenseNumber: licenseNumber || null,
-        licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
-        aadhaarNumber: aadhaarNumber || null,
-        panNumber: panNumber || null,
         salary: parseFloat(salary) || 0,
         advanceBalance: parseFloat(advanceBalance) || 0,
-        address: address || null,
-        status,
-        guarantorName: guarantorName || null,
-        guarantorPhone: guarantorPhone || null,
-        dlImagePath: dlImagePath || null,
-        aadhaarImagePath: aadhaarImagePath || null,
-        panImagePath: panImagePath || null
+        status
       }
     }, {
       onSuccess: (data: Driver) => {
@@ -201,25 +179,7 @@ export default function Drivers() {
     });
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, setPath: (val: string) => void) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Data = reader.result as string;
-      try {
-        const ext = file.name.split('.').pop();
-        const filename = `doc_${Date.now()}.${ext}`;
-        const res = await window.electronAPI.app?.saveImage({ base64Data, filename, subfolder: 'driver_docs' });
-        if (res?.success && res.filePath) {
-          setPath(res.filePath);
-        } else {
-          setError(res?.error || 'Failed to save image');
-        }
-      } catch (err: any) { setError(err.message); }
-    };
-    reader.readAsDataURL(file);
-  };
+
 
   const handleOpenLedger = (driver: Driver) => {
     setSelectedDriver(driver);
@@ -237,18 +197,8 @@ export default function Drivers() {
       data: {
         driverName,
         mobileNumber,
-        licenseNumber: licenseNumber || null,
-        licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
-        aadhaarNumber: aadhaarNumber || null,
-        panNumber: panNumber || null,
         salary: parseFloat(salary) || 0,
-        address: address || null,
-        status,
-        guarantorName: guarantorName || null,
-        guarantorPhone: guarantorPhone || null,
-        dlImagePath: dlImagePath || null,
-        aadhaarImagePath: aadhaarImagePath || null,
-        panImagePath: panImagePath || null
+        status
       }
     }, {
       onSuccess: () => {
@@ -263,19 +213,9 @@ export default function Drivers() {
     setSelectedDriver(driver);
     setDriverName(driver.driverName);
     setMobileNumber(driver.mobileNumber);
-    setLicenseNumber(driver.licenseNumber || '');
-    setLicenseExpiry(driver.licenseExpiry ? new Date(driver.licenseExpiry).toISOString().split('T')[0] : '');
-    setAadhaarNumber(driver.aadhaarNumber || '');
-    setPanNumber(driver.panNumber || '');
     setSalary(String(driver.salary || 0));
     setAdvanceBalance(String(driver.advanceBalance || 0));
-    setAddress(driver.address || '');
     setStatus(driver.status);
-    setGuarantorName(driver.guarantorName || '');
-    setGuarantorPhone(driver.guarantorPhone || '');
-    setDlImagePath(driver.dlImagePath || '');
-    setAadhaarImagePath(driver.aadhaarImagePath || '');
-    setPanImagePath(driver.panImagePath || '');
     setError('');
     setIsEditOpen(true);
   };
@@ -294,19 +234,9 @@ export default function Drivers() {
   const resetForm = () => {
     setDriverName('');
     setMobileNumber('');
-    setLicenseNumber('');
-    setLicenseExpiry('');
-    setAadhaarNumber('');
-    setPanNumber('');
     setSalary('0');
     setAdvanceBalance('0');
-    setAddress('');
     setStatus('Active');
-    setGuarantorName('');
-    setGuarantorPhone('');
-    setDlImagePath('');
-    setAadhaarImagePath('');
-    setPanImagePath('');
     setError('');
     setSelectedDriver(null);
   };
@@ -315,8 +245,7 @@ export default function Drivers() {
     .filter(d => statusFilter === 'All' || d.status === statusFilter)
     .filter(d =>
       d.driverName.toLowerCase().includes(search.toLowerCase()) ||
-      d.mobileNumber.includes(search) ||
-      (d.licenseNumber && d.licenseNumber.toLowerCase().includes(search.toLowerCase()))
+      d.mobileNumber.includes(search)
     );
 
   const statusTabs = ['All', 'Active', 'On-Trip', 'Inactive'];
@@ -329,48 +258,9 @@ export default function Drivers() {
         <div className="space-y-2"><Label>{t('Mobile Number *')}</Label><Input value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} placeholder={t('e.g. 9988776655')} className="bg-background/50 border-white/10" required /></div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2"><Label>{t('DL Number')}</Label><Input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} placeholder={t('e.g. MH-12-2015-...')} className="bg-background/50 border-white/10 font-mono uppercase" /></div>
-        <div className="space-y-2"><Label>{t('License Expiry Date')}</Label><Input type="date" value={licenseExpiry} onChange={(e) => setLicenseExpiry(e.target.value)} className="bg-background/50 border-white/10" /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2"><Label>{t('Salary (₹ / Month)')}</Label><Input type="number" value={salary} onChange={(e) => setSalary(e.target.value)} className="bg-background/50 border-white/10" /></div>
         {!isEdit && <div className="space-y-2"><Label>{t('Initial Advance (₹)')}</Label><Input type="number" value={advanceBalance} onChange={(e) => setAdvanceBalance(e.target.value)} className="bg-background/50 border-white/10" /></div>}
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2"><Label>{t('Aadhaar Card')}</Label><Input value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)} placeholder="1234 5678 9012" className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('PAN Card')}</Label><Input value={panNumber} onChange={(e) => setPanNumber(e.target.value)} placeholder="ABCDE1234F" className="bg-background/50 border-white/10 font-mono uppercase" /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
-        <div className="space-y-2"><Label>{t('Guarantor/Reference Name')}</Label><Input value={guarantorName} onChange={(e) => setGuarantorName(e.target.value)} placeholder={t('e.g. Suresh (Uncle)')} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('Guarantor Phone')}</Label><Input value={guarantorPhone} onChange={(e) => setGuarantorPhone(e.target.value)} placeholder={t('e.g. 9876543210')} className="bg-background/50 border-white/10" /></div>
-      </div>
-      <div className="space-y-2 pt-2 border-t border-white/10">
-        <Label>{t('Document Vault (Upload Photos)')}</Label>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="flex flex-col space-y-1">
-            <span className="text-xs text-muted-foreground">{t('DL Photo')}</span>
-            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10">
-              <Camera className="h-4 w-4 mr-2" /> {dlImagePath ? t('Uploaded') : t('Upload')}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDlImagePath)} />
-            </Label>
-          </div>
-          <div className="flex flex-col space-y-1">
-            <span className="text-xs text-muted-foreground">{t('Aadhaar Photo')}</span>
-            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10">
-              <Camera className="h-4 w-4 mr-2" /> {aadhaarImagePath ? t('Uploaded') : t('Upload')}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setAadhaarImagePath)} />
-            </Label>
-          </div>
-          <div className="flex flex-col space-y-1">
-            <span className="text-xs text-muted-foreground">{t('PAN Photo')}</span>
-            <Label className="cursor-pointer flex items-center justify-center p-2 border border-white/10 rounded-md bg-white/5 hover:bg-white/10">
-              <Camera className="h-4 w-4 mr-2" /> {panImagePath ? t('Uploaded') : t('Upload')}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setPanImagePath)} />
-            </Label>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-2 pt-2 border-t border-white/10"><Label>{t('Address')}</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('e.g. Ward No. 5, Jamshedpur')} className="bg-background/50 border-white/10" /></div>
       <div className="space-y-2">
         <Label>{t('Status')}</Label>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
@@ -459,8 +349,6 @@ export default function Drivers() {
                 <TableRow className="border-white/10 hover:bg-white/5">
                   <TableHead>{t('Driver Name')}</TableHead>
                   <TableHead>{t('Mobile')}</TableHead>
-                  <TableHead>{t('License / Expiry')}</TableHead>
-                  <TableHead>{t('Govt IDs')}</TableHead>
                   <TableHead>{t('Salary')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead className="text-right">{t('Advance Balance')}</TableHead>
@@ -474,39 +362,15 @@ export default function Drivers() {
                   <TableRow><TableCell colSpan={8} className="text-center h-32 text-muted-foreground">{t('No drivers found.')}</TableCell></TableRow>
                 ) : (
                   filteredDrivers.map((driver) => {
-                    const licExpDays = driver.licenseExpiry ? Math.ceil((new Date(driver.licenseExpiry).getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000)) : null;
                     return (
                       <TableRow key={driver.id} className="border-white/10 hover:bg-white/5">
                         <TableCell className="font-semibold text-foreground">
-                          <div className="flex flex-col">
-                            <span>{driver.driverName}</span>
-                            <span className="text-xs text-muted-foreground font-normal flex items-center mt-1">
-                              <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />{driver.address || t('No Address Listed')}
-                            </span>
-                          </div>
+                          {driver.driverName}
                         </TableCell>
                         <TableCell>
                           <a href={`tel:${driver.mobileNumber}`} className="flex items-center text-primary hover:text-primary/80 transition-colors" title="Click to call">
                             <Phone className="h-3.5 w-3.5 mr-1" />{driver.mobileNumber}
                           </a>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          <div className="flex flex-col">
-                            <span>{driver.licenseNumber || '-'}</span>
-                            {licExpDays !== null && (
-                              <span className={`text-[10px] mt-0.5 ${licExpDays < 0 ? 'text-red-400 font-bold' : licExpDays <= 30 ? 'text-orange-400' : 'text-muted-foreground'}`}>
-                                <Calendar className="h-2.5 w-2.5 inline mr-0.5" />
-                                {licExpDays < 0 ? `${t('Expired')} ${Math.abs(licExpDays)}d` : `${t('Exp in')} ${licExpDays}d`}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <div className="flex flex-col space-y-0.5">
-                            {driver.aadhaarNumber && <span>{t('AADHAAR:')} {driver.aadhaarNumber}</span>}
-                            {driver.panNumber && <span>{t('PAN:')} {driver.panNumber}</span>}
-                            {!driver.aadhaarNumber && !driver.panNumber && <span>-</span>}
-                          </div>
                         </TableCell>
                         <TableCell className="font-medium">{formatCurrency(driver.salary || 0)}</TableCell>
                         <TableCell>

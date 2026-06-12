@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { invoiceSchema } from './schema';
@@ -22,7 +23,7 @@ interface InvoiceFormProps {
 
 export function InvoiceForm({ initialData, trips, onSubmit, onCancel, isSubmitting }: InvoiceFormProps) {
   const { t } = usePreferences();
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<InvoiceFormValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema) as any,
     defaultValues: {
       invoiceNumber: initialData?.invoiceNumber || '',
@@ -45,6 +46,20 @@ export function InvoiceForm({ initialData, trips, onSubmit, onCancel, isSubmitti
   const calculatedSubtotal = selectedTrip ? selectedTrip.freightAmount : 0;
   const calculatedGst = (calculatedSubtotal * gstPercentage) / 100;
   const calculatedTotal = Math.max(0, calculatedSubtotal + calculatedGst - shortageAmount - damageAmount);
+
+  useEffect(() => {
+    if (selectedTrip && !initialData?.amountPaid) {
+      const advance = selectedTrip.partyAdvance || 0;
+      setValue('amountPaid', advance);
+      if (advance >= calculatedTotal && calculatedTotal > 0) {
+        setValue('status', 'Paid');
+      } else if (advance > 0) {
+        setValue('status', 'Partial');
+      } else {
+        setValue('status', 'Unpaid');
+      }
+    }
+  }, [tripId]);
 
   const handleFormSubmit = (data: InvoiceFormValues) => {
     onSubmit(data, calculatedSubtotal, calculatedGst, calculatedTotal);

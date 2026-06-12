@@ -16,6 +16,7 @@ import Parties from './pages/Parties'
 import Diesel from './pages/Diesel'
 import Expenses from './pages/Expenses'
 import Invoices from './pages/Invoices'
+import Settlements from './pages/Settlements'
 import Settings from './pages/Settings'
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
             <Route path="/diesel" element={<Diesel />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/invoices" element={<Invoices />} />
+            <Route path="/settlements" element={<Settlements />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -11,7 +11,8 @@ import {
   Settings,
   Car,
   Languages,
-  Monitor
+  Monitor,
+  Wallet
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -26,6 +27,7 @@ const navItems = [
   { name: 'Trips', path: '/trips', icon: Truck },
   { name: 'Vehicles', path: '/vehicles', icon: Car },
   { name: 'Drivers', path: '/drivers', icon: Users },
+  { name: 'Settlements', path: '/settlements', icon: Wallet },
   { name: 'Parties', path: '/parties', icon: Users },
   { name: 'Diesel', path: '/diesel', icon: Fuel },
   { name: 'Expenses', path: '/expenses', icon: Receipt },

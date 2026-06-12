@@ -65,7 +65,7 @@ export default function Trips() {
     ['trips', 'all'],
     'trip',
     'findMany',
-    { include: { vehicle: true, party: true, driver: true }, orderBy: { createdAt: 'desc' } }
+    { include: { vehicle: true, party: true, driver: true, directDrivers: true, driverAdvances: true, driverChanges: true, tollEntries: true, maintenanceEntries: true, dieselEntries: true, tripLinks: true }, orderBy: { createdAt: 'desc' } }
   );
   
   const { data: allVehicles = [] } = usePrismaQuery<Vehicle[]>(['vehicles', 'all'], 'vehicle', 'findMany', { orderBy: { vehicleNumber: 'asc' } });
@@ -94,15 +94,23 @@ export default function Trips() {
   };
 
   const handleCreate = (data: TripFormValues) => {
+    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, tripLinks, ...restData } = data;
     createMutation.mutate({
       data: {
-        ...data,
+        ...restData,
         tripDate: new Date(data.tripDate),
         loadingDate: data.loadingDate ? new Date(data.loadingDate) : null,
         unloadingDate: data.unloadingDate ? new Date(data.unloadingDate) : null,
         reportDate: data.reportDate ? new Date(data.reportDate) : null,
         driverId: data.driverId || null,
         balance: data.freightAmount - data.partyAdvance,
+        directDrivers: { create: directDrivers.map(d => ({ driverName: d.driverName })) },
+        driverAdvances: { create: driverAdvances.map(a => ({ amount: a.amount, date: new Date(a.date), remarks: a.remarks })) },
+        driverChanges: { create: driverChanges.map(c => ({ previousDriverId: c.previousDriverId || null, newDriverId: c.newDriverId || null, changedAt: new Date(c.changedAt) })) },
+        tollEntries: { create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
+        maintenanceEntries: { create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
+        dieselEntries: { create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
+        tripLinks: { create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
       }
     }, {
       onSuccess: () => {
@@ -115,16 +123,24 @@ export default function Trips() {
 
   const handleUpdate = (data: TripFormValues) => {
     if (!selectedTrip) return;
+    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, tripLinks, ...restData } = data;
     updateMutation.mutate({
       where: { id: selectedTrip.id },
       data: {
-        ...data,
+        ...restData,
         tripDate: new Date(data.tripDate),
         loadingDate: data.loadingDate ? new Date(data.loadingDate) : null,
         unloadingDate: data.unloadingDate ? new Date(data.unloadingDate) : null,
         reportDate: data.reportDate ? new Date(data.reportDate) : null,
         driverId: data.driverId || null,
         balance: data.freightAmount - data.partyAdvance,
+        directDrivers: { deleteMany: {}, create: directDrivers.map(d => ({ driverName: d.driverName })) },
+        driverAdvances: { deleteMany: {}, create: driverAdvances.map(a => ({ amount: a.amount, date: new Date(a.date), remarks: a.remarks })) },
+        driverChanges: { deleteMany: {}, create: driverChanges.map(c => ({ previousDriverId: c.previousDriverId || null, newDriverId: c.newDriverId || null, changedAt: new Date(c.changedAt) })) },
+        tollEntries: { deleteMany: {}, create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
+        maintenanceEntries: { deleteMany: {}, create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
+        dieselEntries: { deleteMany: {}, create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
+        tripLinks: { deleteMany: {}, create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
       }
     }, {
       onSuccess: () => {
@@ -173,8 +189,8 @@ export default function Trips() {
     });
   };
 
-  const calcNetProfit = (trip: Trip) => {
-    return (trip.freightAmount || 0) - (trip.commission || 0) - (trip.dieselAmount || 0) - (trip.liquidDiesel || 0) - (trip.driverCash || 0) - (trip.toll || 0) - (trip.maintenance || 0) - (trip.extraRunning || 0) - (trip.extraCharges || 0);
+  const calcNetProfit = (trip: any) => {
+    return (trip.freightAmount || 0) - (trip.commission || 0) - (trip.dieselAmount || 0) - (trip.liquidDiesel || 0) - (trip.driverCash || 0) - (trip.toll || 0) - (trip.maintenance || 0) - (trip.extraRunning || 0) - (trip.extraCharges || 0) - (trip.selfExpenses || 0);
   };
 
   const handleSendWALr = async (trip: TripWithRelations) => {
@@ -187,7 +203,7 @@ export default function Trips() {
     setIsSendingWA(true);
     setTimeout(async () => {
       const caption = `Dear ${trip.party?.companyName},\n\nPlease find attached the Lorry Receipt (LR) for the trip from ${trip.from} to ${trip.to}.\nVehicle: ${trip.vehicle?.vehicleNumber}\n\nThank you!`;
-      await sendWhatsAppPdf(phone, '#hidden-wa-lr-capture .print-lr-container', `LR_${trip.lrNumber || trip.tripNo}.pdf`, caption);
+      await sendWhatsAppPdf(phone, '#hidden-wa-lr-capture .print-lr-container', `LR_${trip.tripNo}.pdf`, caption);
       setIsSendingWA(false);
     }, 500);
   };
@@ -200,7 +216,7 @@ export default function Trips() {
 
   const handleSaveLrAsPDF = async () => {
     setIsGeneratingPdf(true);
-    await generatePdf('.print-lr-container', `LR_${selectedTrip?.lrNumber || selectedTrip?.tripNo}.pdf`);
+    await generatePdf('.print-lr-container', `LR_${selectedTrip?.tripNo}.pdf`);
     setIsGeneratingPdf(false);
   };
 

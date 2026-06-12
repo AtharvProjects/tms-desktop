@@ -46,6 +46,8 @@ model Trip {
   maintenance      Float    @default(0)
   extraRunning     Float    @default(0)
   extraCharges     Float    @default(0)
+  driverSavings    Float    @default(0)
+  selfExpenses     Float    @default(0)
   balance          Float    @default(0)
   detentionTime    String?
   holdingDays      Int      @default(0)
@@ -54,16 +56,20 @@ model Trip {
   podStatus        String   @default("Pending") // Pending, Received, Submitted
   paymentStatus    String   @default("Pending") // Pending, Partial, Paid
   
-  eWayBillNumber   String?
   route            String?
-  
   notes            String?
-  lrNumber         String?
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   
   invoices         Invoice[]
+  directDrivers      DirectDriver[]
+  driverAdvances     DriverAdvance[]
+  driverChanges      DriverChangeHistory[]
+  tollEntries        TollEntry[]
+  maintenanceEntries MaintenanceEntry[]
+  dieselEntries      DieselLog[]
+  tripLinks          TripLink[]
 }
 
 model Vehicle {
@@ -104,26 +110,19 @@ model Driver {
   id               String   @id @default(uuid())
   driverName       String
   mobileNumber     String
-  licenseNumber    String?
-  licenseExpiry    DateTime?
-  aadhaarNumber    String?
-  panNumber        String?
   
   salary           Float    @default(0)
   advanceBalance   Float    @default(0)
-  address          String?
   
   status           String   @default("Active") // Active, On-Trip, Inactive
-  
-  guarantorName    String?
-  guarantorPhone   String?
-  dlImagePath      String?
-  aadhaarImagePath String?
-  panImagePath     String?
   
   trips            Trip[]
   vehicles         Vehicle[] @relation("VehicleDriver")
   ledgers          DriverLedger[]
+  advances         DriverAdvance[]
+  settlements      DriverSettlement[]
+  changesAsPrevious DriverChangeHistory[] @relation("PreviousDriver")
+  changesAsNew     DriverChangeHistory[] @relation("NewDriver")
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -134,9 +133,6 @@ model Party {
   companyName      String   @unique
   contactPerson    String?
   phone            String?
-  email            String?
-  gstNumber        String?
-  address          String?
   
   outstandingBalance Float  @default(0)
   status           String   @default("Active")
@@ -152,6 +148,9 @@ model DieselLog {
   id               String   @id @default(uuid())
   vehicleId        String
   vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  
+  tripId           String?
+  trip             Trip?    @relation(fields: [tripId], references: [id], onDelete: Cascade)
   
   date             DateTime @default(now())
   fuelStation      String?
@@ -243,3 +242,80 @@ model PartyLedger {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
+
+model DirectDriver {
+  id        String   @id @default(uuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  driverName String
+  createdAt DateTime @default(now())
+}
+
+model DriverAdvance {
+  id        String   @id @default(uuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  driverId  String?
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+  amount    Float
+  date      DateTime @default(now())
+  remarks   String?
+  createdAt DateTime @default(now())
+}
+
+model DriverChangeHistory {
+  id               String   @id @default(uuid())
+  tripId           String
+  trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  previousDriverId String?
+  previousDriver   Driver?  @relation("PreviousDriver", fields: [previousDriverId], references: [id])
+  newDriverId      String?
+  newDriver        Driver?  @relation("NewDriver", fields: [newDriverId], references: [id])
+  changedAt        DateTime @default(now())
+}
+
+model DriverSettlement {
+  id              String   @id @default(uuid())
+  driverId        String
+  driver          Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amountGiven     Float    @default(0)
+  amountReceived  Float    @default(0)
+  balance         Float    @default(0)
+  transactionDate DateTime @default(now())
+  remarks         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TollEntry {
+  id        String   @id @default(uuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tollName  String
+  amount    Float
+  date      DateTime @default(now())
+  remarks   String?
+  createdAt DateTime @default(now())
+}
+
+model MaintenanceEntry {
+  id              String   @id @default(uuid())
+  tripId          String
+  trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  maintenanceType String
+  amount          Float
+  date            DateTime @default(now())
+  remarks         String?
+  createdAt       DateTime @default(now())
+}
+
+model TripLink {
+  id          String   @id @default(uuid())
+  tripId      String
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  url         String
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+

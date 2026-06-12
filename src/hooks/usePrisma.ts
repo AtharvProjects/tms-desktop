@@ -56,7 +56,11 @@ export function usePrismaMutation<TArgs = any, TData = any>(
       }
     },
     onError: (error) => {
-      toast.error(`Error (${operation} ${model}): ${error.message}`);
+      let message = error.message;
+      if (message.includes('Foreign key constraint') || message.includes('constraint failed on the foreign key')) {
+        message = `Cannot delete this ${model} because it is being used in other records (like trips, ledgers, or invoices). Please delete those related records first, or mark this ${model} as Inactive instead.`;
+      }
+      toast.error(`Error: ${message}`);
     }
   });
 }

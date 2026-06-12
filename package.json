@@ -37,22 +37,30 @@
       {
         "from": "node_modules/@prisma/client",
         "to": "node_modules/@prisma/client",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "node_modules/prisma",
         "to": "node_modules/prisma",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "node_modules/.prisma",
         "to": "node_modules/.prisma",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "prisma",
         "to": "prisma",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   },
@@ -91,6 +99,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@faker-js/faker": "^10.4.0",
     "@types/node": "^24.12.4",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.15",
