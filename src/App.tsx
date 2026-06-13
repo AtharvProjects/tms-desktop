@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
@@ -23,7 +23,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <PreferencesProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Toaster theme="dark" position="bottom-right" />
           <AnimatePresence mode="wait">
         <Routes>
@@ -41,7 +41,7 @@ function App() {
           </Route>
         </Routes>
           </AnimatePresence>
-        </BrowserRouter>
+        </HashRouter>
       </PreferencesProvider>
     </QueryClientProvider>
   )

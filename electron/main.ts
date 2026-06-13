@@ -9,6 +9,38 @@ const { Client, LocalAuth, MessageMedia } = pkg
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// ─── Windows / Packaged App: Set up Prisma engine paths ────────────────────────
+// When the app is packaged (asar=false), Prisma binaries land in resources/
+const isPkg = app.isPackaged;
+if (isPkg) {
+  const resourcesPath = process.resourcesPath;
+  // Possible engine file names by platform/arch
+  const engineCandidates: string[] = [];
+  if (process.platform === 'win32') {
+    engineCandidates.push(
+      'query_engine-windows-arm64.dll.node',   // Windows ARM64
+      'query_engine-windows.dll.node',          // Windows x64
+    );
+  } else if (process.platform === 'darwin') {
+    engineCandidates.push(
+      'libquery_engine-darwin-arm64.dylib.node',
+      'libquery_engine-darwin.dylib.node',
+    );
+  } else {
+    engineCandidates.push('libquery_engine-linux-musl.so.node');
+  }
+  const prismaClientDir = path.join(resourcesPath, 'node_modules', '.prisma', 'client');
+  for (const candidate of engineCandidates) {
+    const fullPath = path.join(prismaClientDir, candidate);
+    if (fs.existsSync(fullPath)) {
+      process.env.PRISMA_QUERY_ENGINE_LIBRARY = fullPath;
+      break;
+    }
+  }
+  process.env.PRISMA_CLI_QUERY_ENGINE_TYPE = 'library';
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const logPath = path.join(app.getPath('userData'), 'electron-debug.log');
 fs.writeFileSync(logPath, '--- Electron Debug Log Start ---\n');
 function logToFile(...args: any[]) {
@@ -116,12 +148,49 @@ ipcMain.handle('app:restore', async (event) => {
 // Initialize Prisma DB file
 const userDbPath = path.join(app.getPath('userData'), 'tms-database.db');
 if (!fs.existsSync(userDbPath)) {
-  const templateDbPath = path.join(__dirname, '../prisma/dev.db');
-  if (fs.existsSync(templateDbPath)) {
+  // Try the packaged resources path first, then fall back to dev path
+  const candidates = [
+    path.join(process.resourcesPath, 'app', 'prisma', 'dev.db'),
+    path.join(process.resourcesPath, 'prisma', 'dev.db'),
+    path.join(__dirname, '../prisma/dev.db')
+  ];
+  
+  let templateDbPath = '';
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      templateDbPath = p;
+      break;
+    }
+  }
+
+  if (templateDbPath) {
     fs.copyFileSync(templateDbPath, userDbPath);
-    logToFile('[Main] Copied template dev.db to userData.');
+    logToFile('[Main] Copied template dev.db to userData from: ' + templateDbPath);
   } else {
-    logToFile('[Main] Template dev.db not found at ' + templateDbPath);
+    logToFile('[Main] Template dev.db not found! Checked: ' + candidates.join(', '));
+  }
+}
+
+
+// Set DATABASE_URL BEFORE initializing PrismaClient
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = `file:${userDbPath}`;
+  logToFile('[Main] Set DATABASE_URL to:', process.env.DATABASE_URL);
+}
+
+// When packaged, also set the engine path relative to resources
+if (isPkg) {
+  const resourcesPath = process.resourcesPath;
+  const prismaClientDir = path.join(resourcesPath, 'node_modules', '.prisma', 'client');
+  if (fs.existsSync(prismaClientDir)) {
+    const candidates = [
+      path.join(prismaClientDir, 'query_engine-windows-arm64.dll.node'), // Windows ARM64
+      path.join(prismaClientDir, 'query_engine-windows.dll.node'),        // Windows x64
+      path.join(prismaClientDir, 'libquery_engine-darwin-arm64.dylib.node'),
+      path.join(prismaClientDir, 'libquery_engine-darwin.dylib.node'),
+    ];
+    process.env.PRISMA_QUERY_ENGINE_LIBRARY = candidates.find(p => fs.existsSync(p)) || '';
+    logToFile('[Main] PRISMA_QUERY_ENGINE_LIBRARY:', process.env.PRISMA_QUERY_ENGINE_LIBRARY);
   }
 }
 
@@ -140,20 +209,37 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 let mainWindow: BrowserWindow | null = null
 
 async function createWindow() {
+  const isWindows = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    titleBarStyle: 'hiddenInset', // macOS traffic lights
-    vibrancy: 'under-window', // macOS glass effect
-    visualEffectState: 'active',
-    transparent: true,
-    backgroundColor: '#00000000',
+    minWidth: 900,
+    minHeight: 600,
+    // macOS-only: traffic lights + vibrancy (ignored on Windows)
+    ...(isMac ? {
+      titleBarStyle: 'hiddenInset',
+      vibrancy: 'under-window',
+      visualEffectState: 'active',
+      transparent: true,
+      backgroundColor: '#00000000',
+    } : {
+      // Windows: standard frame with custom background
+      frame: true,
+      backgroundColor: '#0f172a',
+    }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },
   })
+
+  // Remove default menu on Windows for cleaner look
+  if (isWindows) {
+    mainWindow.removeMenu();
+  }
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -227,13 +313,44 @@ function getClient(): Client {
     const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
     logToFile('[Main] Creating WhatsApp Client instance at auth path:', authPath);
     
+    // Determine Puppeteer executable path for packaged app on Windows
+    let puppeteerExecPath: string | undefined = undefined;
+    if (isPkg) {
+      // electron-builder bundles chromium via puppeteer into resources
+      const possiblePaths = [
+        // Windows
+        path.join(process.resourcesPath, 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        path.join(process.resourcesPath, 'node_modules', 'puppeteer-core', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        // Try whatsapp-web.js bundled chromium
+        path.join(process.resourcesPath, 'node_modules', 'whatsapp-web.js', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+      ];
+      puppeteerExecPath = possiblePaths.find(p => fs.existsSync(p));
+      if (puppeteerExecPath) {
+        logToFile('[Main] Found Puppeteer Chromium at:', puppeteerExecPath);
+      } else {
+        logToFile('[Main] WARNING: Could not find bundled Chromium. WhatsApp may not work in packaged app.');
+      }
+    }
+
     whatsappClient = new Client({
       authStrategy: new LocalAuth({
         dataPath: authPath
       }),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu']
+        ...(puppeteerExecPath ? { executablePath: puppeteerExecPath } : {}),
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-sync',
+        ]
       }
     });
 
