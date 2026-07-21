@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePrismaMutation } from '@/hooks/usePrisma';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -82,13 +83,18 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
           <form onSubmit={handleAddMaintenance} className="grid grid-cols-6 gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20 items-end">
             <div className="space-y-1 col-span-1">
               <Label className="text-xs">{t('Type')}</Label>
-              <select value={maintType} onChange={(e) => setMaintType(e.target.value)} className="w-full h-8 px-2 rounded-md bg-background/50 border border-white/10 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
-                <option value="Tyre">{t('Tyre')}</option>
-                <option value="Oil">{t('Oil')}</option>
-                <option value="Repair">{t('Repair')}</option>
-                <option value="Spares">{t('Spares')}</option>
-                <option value="Other">{t('Other')}</option>
-              </select>
+              <Select value={maintType} onValueChange={setMaintType}>
+                <SelectTrigger className="h-8 bg-background/50 border-white/10 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Tyre">{t('Tyre')}</SelectItem>
+                  <SelectItem value="Oil">{t('Oil')}</SelectItem>
+                  <SelectItem value="Repair">{t('Repair')}</SelectItem>
+                  <SelectItem value="Spares">{t('Spares')}</SelectItem>
+                  <SelectItem value="Other">{t('Other')}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1 col-span-1">
               <Label className="text-xs">{t('Cost (₹)')}</Label>

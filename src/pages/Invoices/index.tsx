@@ -66,7 +66,7 @@ export default function Invoices() {
     ['trips', 'completed'],
     'trip',
     'findMany',
-    { where: { podStatus: { in: ['Received', 'Submitted'] } }, include: { party: true }, orderBy: { tripNo: 'desc' } }
+    { where: { podStatus: { in: ['Received', 'Submitted'] } }, include: { party: true, vehicle: true }, orderBy: { tripNo: 'desc' } }
   );
 
   const existingTripIds = invoices.map(i => i.tripId);
@@ -75,7 +75,7 @@ export default function Invoices() {
   const createMutation = usePrismaMutation<any, Invoice>('invoice', 'create', [['invoices', 'all']]);
   const updateMutation = usePrismaMutation<any, Invoice>('invoice', 'update', [['invoices', 'all']]);
   const deleteMutation = usePrismaMutation<any, Invoice>('invoice', 'delete', [['invoices', 'all']]);
-  const updateTripMutation = usePrismaMutation<any, Trip>('trip', 'update', [['trips', 'completed']]);
+  const updateTripMutation = usePrismaMutation<any, Trip>('trip', 'update', [['trips'], ['invoices'], ['dashboard']]);
   const updatePartyMutation = usePrismaMutation<any, Party>('party', 'update');
 
   const generateNextInvoiceNo = () => {
@@ -375,18 +375,28 @@ export default function Invoices() {
         <Filter className="h-4 w-4 text-muted-foreground" />
         <div className="flex items-center space-x-1 bg-white/5 rounded-full p-1">
           {[['all', 'All Time'], ['this', 'This Month'], ['last', 'Last Month']].map(([val, label]) => (
-            <button key={val} onClick={() => setMonthFilter(val)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${monthFilter === val ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Button
+              key={val}
+              variant={monthFilter === val ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setMonthFilter(val)}
+              className={`rounded-full h-7 px-3 text-xs ${monthFilter === val ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/10'}`}
+            >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="flex items-center space-x-1 bg-white/5 rounded-full p-1">
           {['All', 'Unpaid', 'Partial', 'Paid'].map(status => (
-            <button key={status} onClick={() => setStatusFilter(status)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${statusFilter === status ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Button
+              key={status}
+              variant={statusFilter === status ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setStatusFilter(status)}
+              className={`rounded-full h-7 px-3 text-xs ${statusFilter === status ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/10'}`}
+            >
               {status === 'All' ? t('All') : t(status)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

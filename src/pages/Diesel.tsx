@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
 import type { DieselLog, Vehicle, Trip } from '@prisma/client';
@@ -248,20 +249,26 @@ export default function Diesel() {
 
       <div className="flex items-center space-x-3 flex-wrap gap-y-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
-        <select
-          value={vehicleFilter}
-          onChange={(e) => setVehicleFilter(e.target.value)}
-          className="h-9 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground"
-        >
-          <option value="All">{t('All Vehicles')}</option>
-          {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicleNumber}</option>)}
-        </select>
+        <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
+          <SelectTrigger className="h-9 w-[180px] bg-background/50 border-white/10">
+            <SelectValue placeholder={t('All Vehicles')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">{t('All Vehicles')}</SelectItem>
+            {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.vehicleNumber}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <div className="flex items-center space-x-1 bg-white/5 rounded-full p-1">
           {[['all', t('All Time')], ['this', t('This Month')], ['last', t('Last Month')]].map(([val, label]) => (
-            <button key={val} onClick={() => setMonthFilter(val)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${monthFilter === val ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Button
+              key={val}
+              variant={monthFilter === val ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setMonthFilter(val)}
+              className={`rounded-full h-7 px-3 text-xs ${monthFilter === val ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/10'}`}
+            >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -365,17 +372,26 @@ export default function Diesel() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="vehicleId">{t('Vehicle / Truck *')}</Label>
-                <select id="vehicleId" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground" required>
-                  <option value="">{t('Select Vehicle')}</option>
-                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicleNumber} ({v.vehicleType})</option>)}
-                </select>
+                <Select value={vehicleId} onValueChange={setVehicleId} required>
+                  <SelectTrigger id="vehicleId" className="bg-background/50 border-white/10">
+                    <SelectValue placeholder={t('Select Vehicle')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.vehicleNumber} ({v.vehicleType})</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="tripReference">{t('Link to Trip (Optional)')}</Label>
-                <select id="tripReference" value={tripReference} onChange={(e) => setTripReference(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-                  <option value="">{t('None')}</option>
-                  {trips.map(t => <option key={t.id} value={t.id}>{t.tripNo} ({t.from} → {t.to})</option>)}
-                </select>
+                <Select value={tripReference || "none"} onValueChange={(val) => setTripReference(val === "none" ? "" : val)}>
+                  <SelectTrigger id="tripReference" className="bg-background/50 border-white/10">
+                    <SelectValue placeholder={t('None')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t('None')}</SelectItem>
+                    {trips.map(t => <SelectItem key={t.id} value={t.id}>{t.tripNo} ({t.from} → {t.to})</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

@@ -110,6 +110,3 @@
 .compact-mode .h-10 {
   height: 2rem !important;
 }
-.compact-mode input, .compact-mode select {
-  font-size: 0.8rem !important;
-}

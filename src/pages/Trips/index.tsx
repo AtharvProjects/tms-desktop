@@ -75,9 +75,9 @@ export default function Trips() {
   const activeVehicles = allVehicles.filter(v => v.status === 'Active');
   const activeDrivers = allDrivers.filter(d => d.status === 'Active');
 
-  const createMutation = usePrismaMutation<any, Trip>('trip', 'create', [['trips', 'all']]);
-  const updateMutation = usePrismaMutation<any, Trip>('trip', 'update', [['trips', 'all']]);
-  const deleteMutation = usePrismaMutation<any, Trip>('trip', 'delete', [['trips', 'all']]);
+  const createMutation = usePrismaMutation<any, Trip>('trip', 'create', [['trips'], ['invoices'], ['settlements'], ['dashboard']]);
+  const updateMutation = usePrismaMutation<any, Trip>('trip', 'update', [['trips'], ['invoices'], ['settlements'], ['dashboard']]);
+  const deleteMutation = usePrismaMutation<any, Trip>('trip', 'delete', [['trips'], ['invoices'], ['settlements'], ['dashboard']]);
   const updateVehicleMutation = usePrismaMutation<any, Vehicle>('vehicle', 'update', [['vehicles', 'all']]);
   const updateDriverMutation = usePrismaMutation<any, Driver>('driver', 'update', [['drivers', 'all']]);
 
@@ -470,14 +470,15 @@ export default function Trips() {
 
           <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-hide">
             {[{ label: t('All'), value: 'All' }, { label: t('Pending POD'), value: 'pending_pod' }, { label: t('Pending Payment'), value: 'pending_payment' }, { label: t('Completed'), value: 'completed' }, { label: t('Overdue'), value: 'overdue' }].map(tab => (
-              <button key={tab.value} onClick={() => setStatusFilter(tab.value)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-                  statusFilter === tab.value
-                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                    : 'bg-white/5 text-muted-foreground hover:bg-white/10'
-                }`}>
+              <Button
+                key={tab.value}
+                variant={statusFilter === tab.value ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setStatusFilter(tab.value)}
+                className={`rounded-full ${statusFilter === tab.value ? 'shadow-lg shadow-primary/20' : 'text-muted-foreground hover:bg-white/10'}`}
+              >
                 {tab.label}
-              </button>
+              </Button>
             ))}
           </div>
 

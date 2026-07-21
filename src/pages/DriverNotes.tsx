@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
 import type { StandaloneDriverLedger } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -206,9 +207,14 @@ export default function DriverNotes() {
 
       <div className="space-y-2">
         <Label>{t('Entry Type *')}</Label>
-        <select value={type} onChange={(e) => setType(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground" required>
-          {ENTRY_TYPES.map(tOption => <option key={tOption} value={tOption}>{t(tOption)}</option>)}
-        </select>
+        <Select value={type} onValueChange={setType} required>
+          <SelectTrigger className="bg-background/50 border-white/10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ENTRY_TYPES.map(tOption => <SelectItem key={tOption} value={tOption}>{t(tOption)}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -312,10 +318,15 @@ export default function DriverNotes() {
           <Filter className="h-4 w-4 text-muted-foreground" />
           <div className="flex items-center space-x-1 flex-wrap gap-y-1">
             {['All', ...ENTRY_TYPES].map(typeOpt => (
-              <button key={typeOpt} onClick={() => setTypeFilter(typeOpt)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${typeFilter === typeOpt ? 'bg-primary text-primary-foreground' : 'bg-white/10 text-muted-foreground hover:bg-white/20'}`}>
+              <Button
+                key={typeOpt}
+                variant={typeFilter === typeOpt ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setTypeFilter(typeOpt)}
+                className={`rounded-full h-7 px-3 text-xs ${typeFilter === typeOpt ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/20'}`}
+              >
                 {t(typeOpt)}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

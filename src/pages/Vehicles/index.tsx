@@ -219,14 +219,15 @@ export default function Vehicles() {
 
           <div className="flex items-center space-x-2">
             {statusTabs.map(tab => (
-              <button key={tab} onClick={() => setStatusFilter(tab)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  statusFilter === tab
-                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                    : 'bg-white/5 text-muted-foreground hover:bg-white/10'
-                }`}>
+              <Button
+                key={tab}
+                variant={statusFilter === tab ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setStatusFilter(tab)}
+                className={`rounded-full ${statusFilter === tab ? 'shadow-lg shadow-primary/20' : 'text-muted-foreground hover:bg-white/10'}`}
+              >
                 {t(tab)} {tab !== 'All' && <span className="ml-1 text-xs opacity-70">({vehicles.filter(v => v.status === tab).length})</span>}
-              </button>
+              </Button>
             ))}
           </div>
 

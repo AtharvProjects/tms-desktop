@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
 import type { Driver, DriverLedger } from '@prisma/client';
@@ -263,11 +264,16 @@ export default function Drivers() {
       </div>
       <div className="space-y-2">
         <Label>{t('Status')}</Label>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-          <option value="Active">{t('Active (Available)')}</option>
-          <option value="On-Trip">{t('On-Trip (Busy)')}</option>
-          <option value="Inactive">{t('Inactive')}</option>
-        </select>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="bg-background/50 border-white/10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Active">{t('Active (Available)')}</SelectItem>
+            <SelectItem value="On-Trip">{t('On-Trip (Busy)')}</SelectItem>
+            <SelectItem value="Inactive">{t('Inactive')}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="ghost" onClick={() => { setIsOpen(false); setIsEditOpen(false); resetForm(); }}>{t('Cancel')}</Button>
@@ -325,12 +331,15 @@ export default function Drivers() {
 
       <div className="flex items-center space-x-2">
         {statusTabs.map(tab => (
-          <button key={tab} onClick={() => setStatusFilter(tab)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-              statusFilter === tab ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-white/5 text-muted-foreground hover:bg-white/10'
-            }`}>
+          <Button
+            key={tab}
+            variant={statusFilter === tab ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setStatusFilter(tab)}
+            className={`rounded-full ${statusFilter === tab ? 'shadow-lg shadow-primary/20' : 'text-muted-foreground hover:bg-white/10'}`}
+          >
             {t(tab)} {tab !== 'All' && <span className="ml-1 text-xs opacity-70">({drivers.filter(d => d.status === tab).length})</span>}
-          </button>
+          </Button>
         ))}
       </div>
 

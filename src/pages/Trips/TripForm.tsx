@@ -1,10 +1,11 @@
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tripSchema } from './schema';
 import type { TripFormValues } from './schema';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import type { Vehicle, Driver, Party } from '@prisma/client';
@@ -132,10 +133,20 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         </div>
         <div className="space-y-2">
           <Label>{t('Vehicle *')}</Label>
-          <select {...register('vehicleId')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="">{t('Select Vehicle')}</option>
-            {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicleNumber} {isEdit && v.status !== 'Active' ? `(${v.status})` : ''}</option>)}
-          </select>
+          <Controller
+            name="vehicleId"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue placeholder={t('Select Vehicle')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.vehicleNumber} {isEdit && v.status !== 'Active' ? `(${v.status})` : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {errors.vehicleId && <p className="text-red-500 text-xs">{errors.vehicleId.message}</p>}
         </div>
       </div>
@@ -143,18 +154,39 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t('Customer Party *')}</Label>
-          <select {...register('partyId')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="">{t('Select Customer')}</option>
-            {parties.map(p => <option key={p.id} value={p.id}>{p.companyName}</option>)}
-          </select>
+          <Controller
+            name="partyId"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue placeholder={t('Select Customer')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {parties.map(p => <SelectItem key={p.id} value={p.id}>{p.companyName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {errors.partyId && <p className="text-red-500 text-xs">{errors.partyId.message}</p>}
         </div>
         <div className="space-y-2">
           <Label>{t('Assigned Driver (Registered)')}</Label>
-          <select {...register('driverId')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="">{t('Select Driver')}</option>
-            {drivers.map(d => <option key={d.id} value={d.id}>{d.driverName}</option>)}
-          </select>
+          <Controller
+            name="driverId"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue placeholder={t('Select Driver')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('Select Driver')}</SelectItem>
+                  {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.driverName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
       </div>
 
@@ -206,17 +238,39 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
             <div key={field.id} className="flex gap-2 items-end">
               <div className="flex-1 space-y-1">
                 <Label className="text-xs">{t('Previous Driver')}</Label>
-                <select {...register(`driverChanges.${index}.previousDriverId`)} className="w-full h-8 px-2 rounded-md bg-background/50 border border-white/10 text-xs">
-                  <option value="">{t('None')}</option>
-                  {drivers.map(d => <option key={d.id} value={d.id}>{d.driverName}</option>)}
-                </select>
+                <Controller
+                  name={`driverChanges.${index}.previousDriverId`}
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
+                      <SelectTrigger className="h-8 bg-background/50 border-white/10 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t('None')}</SelectItem>
+                        {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.driverName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="flex-1 space-y-1">
                 <Label className="text-xs">{t('New Driver')}</Label>
-                <select {...register(`driverChanges.${index}.newDriverId`)} className="w-full h-8 px-2 rounded-md bg-background/50 border border-white/10 text-xs">
-                  <option value="">{t('None')}</option>
-                  {drivers.map(d => <option key={d.id} value={d.id}>{d.driverName}</option>)}
-                </select>
+                <Controller
+                  name={`driverChanges.${index}.newDriverId`}
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
+                      <SelectTrigger className="h-8 bg-background/50 border-white/10 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t('None')}</SelectItem>
+                        {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.driverName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div className="flex-1 space-y-1">
                 <Label className="text-xs">{t('Date')}</Label>
@@ -243,11 +297,22 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
         <div className="space-y-2">
           <Label>{t('Billing Type')}</Label>
-          <select {...register('billingType')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="Fixed">{t('Fixed Price')}</option>
-            <option value="Per Ton">{t('Per Ton')}</option>
-            <option value="Per Trip">{t('Per Trip')}</option>
-          </select>
+          <Controller
+            name="billingType"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Fixed">{t('Fixed Price')}</SelectItem>
+                  <SelectItem value="Per Ton">{t('Per Ton')}</SelectItem>
+                  <SelectItem value="Per Trip">{t('Per Trip')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
         <div className="space-y-2"><Label>{t('Freight Amount (₹) *')}</Label><Input type="number" {...register('freightAmount')} className="bg-background/50 border-white/10 font-semibold text-primary" /></div>
         <div className="space-y-2"><Label>{t('Commission (₹)')}</Label><Input type="number" {...register('commission')} className="bg-background/50 border-white/10" /></div>
@@ -368,29 +433,62 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
         <div className="space-y-2">
           <Label>{t('Trip Status')}</Label>
-          <select {...register('status')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10">
-            <option value="Scheduled">{t('Scheduled')}</option>
-            <option value="Loading">{t('Loading')}</option>
-            <option value="In Transit">{t('In Transit')}</option>
-            <option value="Unloading">{t('Unloading')}</option>
-            <option value="Completed">{t('Completed')}</option>
-          </select>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Scheduled">{t('Scheduled')}</SelectItem>
+                  <SelectItem value="Loading">{t('Loading')}</SelectItem>
+                  <SelectItem value="In Transit">{t('In Transit')}</SelectItem>
+                  <SelectItem value="Unloading">{t('Unloading')}</SelectItem>
+                  <SelectItem value="Completed">{t('Completed')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
         <div className="space-y-2">
           <Label>{t('POD Status')}</Label>
-          <select {...register('podStatus')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10">
-            <option value="Pending">{t('Pending')}</option>
-            <option value="Received">{t('Received')}</option>
-            <option value="Submitted">{t('Submitted')}</option>
-          </select>
+          <Controller
+            name="podStatus"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pending">{t('Pending')}</SelectItem>
+                  <SelectItem value="Received">{t('Received')}</SelectItem>
+                  <SelectItem value="Submitted">{t('Submitted')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
         <div className="space-y-2">
           <Label>{t('Payment Status')}</Label>
-          <select {...register('paymentStatus')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10">
-            <option value="Pending">{t('Pending')}</option>
-            <option value="Partial">{t('Partial')}</option>
-            <option value="Paid">{t('Paid')}</option>
-          </select>
+          <Controller
+            name="paymentStatus"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger className="bg-background/50 border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pending">{t('Pending')}</SelectItem>
+                  <SelectItem value="Partial">{t('Partial')}</SelectItem>
+                  <SelectItem value="Paid">{t('Paid')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
 import type { Expense, Trip } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -202,9 +203,14 @@ export default function Expenses() {
       {error && <div className="bg-red-500/15 border border-red-500/30 text-red-500 text-sm p-3 rounded-lg">{error}</div>}
       <div className="space-y-2">
         <Label>{t('Expense Category *')}</Label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground" required>
-          {EXPENSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{t(cat)}</option>)}
-        </select>
+        <Select value={category} onValueChange={setCategory} required>
+          <SelectTrigger className="bg-background/50 border-white/10">
+            <SelectValue placeholder={t('Select Category')} />
+          </SelectTrigger>
+          <SelectContent>
+            {EXPENSE_CATEGORIES.map(cat => <SelectItem key={cat} value={cat}>{t(cat)}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2"><Label>{t('Expense Date *')}</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-background/50 border-white/10" required /></div>
@@ -214,10 +220,15 @@ export default function Expenses() {
         <div className="space-y-2"><Label>{t('Paid By')}</Label><Input placeholder={t('e.g. Owner, Driver')} value={paidBy} onChange={(e) => setPaidBy(e.target.value)} className="bg-background/50 border-white/10" /></div>
         <div className="space-y-2">
           <Label>{t('Link to Trip (Optional)')}</Label>
-          <select value={tripReference} onChange={(e) => setTripReference(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="">{t('None')}</option>
-            {trips.map(t => <option key={t.id} value={t.tripNo}>{t.tripNo} ({t.from} → {t.to})</option>)}
-          </select>
+          <Select value={tripReference || "none"} onValueChange={(val) => setTripReference(val === "none" ? "" : val)}>
+            <SelectTrigger className="bg-background/50 border-white/10">
+              <SelectValue placeholder={t('None')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t('None')}</SelectItem>
+              {trips.map(t => <SelectItem key={t.id} value={t.tripNo}>{t.tripNo} ({t.from} → {t.to})</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="space-y-2"><Label>{t('Notes / Description')}</Label><Input placeholder={t('e.g. Toll taxes paid on NH8 or vehicle spare parts')} value={description} onChange={(e) => setDescription(e.target.value)} className="bg-background/50 border-white/10" /></div>
@@ -304,18 +315,28 @@ export default function Expenses() {
         <Filter className="h-4 w-4 text-muted-foreground" />
         <div className="flex items-center space-x-1 bg-white/5 rounded-full p-1">
           {[['all', t('All Time')], ['this', t('This Month')], ['last', t('Last Month')]].map(([val, label]) => (
-            <button key={val} onClick={() => setMonthFilter(val)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${monthFilter === val ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Button
+              key={val}
+              variant={monthFilter === val ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setMonthFilter(val)}
+              className={`rounded-full h-7 px-3 text-xs ${monthFilter === val ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/10'}`}
+            >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="flex items-center space-x-1 flex-wrap gap-y-1">
           {['All', ...EXPENSE_CATEGORIES].map(cat => (
-            <button key={cat} onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${categoryFilter === cat ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground hover:bg-white/10'}`}>
+            <Button
+              key={cat}
+              variant={categoryFilter === cat ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setCategoryFilter(cat)}
+              className={`rounded-full h-7 px-3 text-xs ${categoryFilter === cat ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/10'}`}
+            >
               {cat === 'All' ? t('All') : t(cat)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { Camera } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehicleSchema } from './schema';
@@ -7,6 +7,7 @@ import type { VehicleFormValues } from './schema';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Driver } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
 
@@ -21,7 +22,7 @@ interface VehicleFormProps {
 export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmitting }: VehicleFormProps) {
   const { t } = usePreferences();
   const [uploadError, setUploadError] = useState('');
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<VehicleFormValues>({
+  const { register, handleSubmit, setValue, watch, control, formState: { errors } } = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema) as any,
     defaultValues: {
       vehicleNumber: initialData?.vehicleNumber || '',
@@ -91,10 +92,21 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
         </div>
         <div className="space-y-2">
           <Label htmlFor="driverId">{t('Default Driver')}</Label>
-          <select id="driverId" {...register('driverId')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-            <option value="">{t('Unassigned')}</option>
-            {drivers.map(d => (<option key={d.id} value={d.id}>{d.driverName} ({d.mobileNumber})</option>))}
-          </select>
+          <Controller
+            name="driverId"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
+                <SelectTrigger id="driverId" className="bg-background/50 border-white/10">
+                  <SelectValue placeholder={t('Unassigned')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('Unassigned')}</SelectItem>
+                  {drivers.map(d => (<SelectItem key={d.id} value={d.id}>{d.driverName} ({d.mobileNumber})</SelectItem>))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </div>
       </div>
 
@@ -156,11 +168,22 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
 
       <div className="space-y-2 pt-2 border-t border-white/10">
         <Label htmlFor="status">{t('Status')}</Label>
-        <select id="status" {...register('status')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-          <option value="Active">{t('Active')}</option>
-          <option value="Maintenance">{t('Maintenance')}</option>
-          <option value="Inactive">{t('Inactive')}</option>
-        </select>
+        <Controller
+          name="status"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value}>
+              <SelectTrigger id="status" className="bg-background/50 border-white/10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Active">{t('Active')}</SelectItem>
+                <SelectItem value="Maintenance">{t('Maintenance')}</SelectItem>
+                <SelectItem value="Inactive">{t('Inactive')}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
 
       <div className="space-y-2">

@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { invoiceSchema } from './schema';
 import type { InvoiceFormValues } from './schema';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
 import type { Trip, Party, Vehicle } from '@prisma/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,7 +24,7 @@ interface InvoiceFormProps {
 
 export function InvoiceForm({ initialData, trips, onSubmit, onCancel, isSubmitting }: InvoiceFormProps) {
   const { t } = usePreferences();
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<InvoiceFormValues>({
+  const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema) as any,
     defaultValues: {
       invoiceNumber: initialData?.invoiceNumber || '',
@@ -82,14 +83,24 @@ export function InvoiceForm({ initialData, trips, onSubmit, onCancel, isSubmitti
 
       <div className="space-y-2">
         <Label>{t('Select Completed Trip to Bill *')}</Label>
-        <select {...register('tripId')} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-          <option value="">{t('-- Choose a trip pending invoice --')}</option>
-          {trips.map(t => (
-            <option key={t.id} value={t.id}>
-              {t.tripNo} - {t.party?.companyName} ({formatCurrency(t.freightAmount)})
-            </option>
-          ))}
-        </select>
+        <Controller
+          name="tripId"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value}>
+              <SelectTrigger className="bg-background/50 border-white/10">
+                <SelectValue placeholder={t('-- Choose a trip pending invoice --')} />
+              </SelectTrigger>
+              <SelectContent>
+                {trips.map(t => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.tripNo} - {t.party?.companyName} ({formatCurrency(t.freightAmount)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
         {errors.tripId && <p className="text-red-500 text-xs">{errors.tripId.message}</p>}
         {trips.length === 0 && (
           <p className="text-xs text-orange-400 mt-1">{t('No completed trips available to invoice. Make sure trip POD is received.')}</p>
@@ -133,11 +144,22 @@ export function InvoiceForm({ initialData, trips, onSubmit, onCancel, isSubmitti
               </div>
               <div className="space-y-2">
                 <Label className="text-xs">{t('Payment Status')}</Label>
-                <select {...register('status')} className="w-full h-8 px-2 rounded-md bg-background/50 border border-white/10 focus:outline-none text-xs text-foreground">
-                  <option value="Unpaid">{t('Unpaid')}</option>
-                  <option value="Partial">{t('Partial')}</option>
-                  <option value="Paid">{t('Fully Paid')}</option>
-                </select>
+                <Controller
+                  name="status"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger className="h-8 bg-background/50 border-white/10 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Unpaid">{t('Unpaid')}</SelectItem>
+                        <SelectItem value="Partial">{t('Partial')}</SelectItem>
+                        <SelectItem value="Paid">{t('Fully Paid')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
             </div>
           </CardContent>
