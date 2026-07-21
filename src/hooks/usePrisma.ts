@@ -20,7 +20,13 @@ export function usePrismaQuery<TData>(
     queryKey,
     ...options,
     queryFn: async () => {
-      const res = await window.electronAPI.prisma.query(model, operation, args);
+      const timeoutMs = 15000;
+      const res = await Promise.race([
+        window.electronAPI.prisma.query(model, operation, args),
+        new Promise<{ data: null, error: string }>((_, reject) =>
+          setTimeout(() => reject(new Error(`Database query timed out after ${timeoutMs/1000}s`)), timeoutMs)
+        )
+      ]);
       if (res.error) throw new Error(res.error);
       return res.data;
     },

@@ -174,7 +174,7 @@ if (!fs.existsSync(userDbPath)) {
 
 // Set DATABASE_URL BEFORE initializing PrismaClient
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = `file:${userDbPath}`;
+  process.env.DATABASE_URL = `file:${userDbPath.replace(/\\/g, '/')}`;
   logToFile('[Main] Set DATABASE_URL to:', process.env.DATABASE_URL);
 }
 
@@ -255,6 +255,7 @@ async function createWindow() {
   }
 }
 
+app.commandLine.appendSwitch('lang', 'en-GB');
 app.whenReady().then(createWindow)
 
 app.on('window-all-closed', async () => {
@@ -313,29 +314,47 @@ function getClient(): Client {
     const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
     logToFile('[Main] Creating WhatsApp Client instance at auth path:', authPath);
     
-    // Determine Puppeteer executable path for packaged app on Windows
+    // Determine Puppeteer executable path
     let puppeteerExecPath: string | undefined = undefined;
+    const possiblePaths = [
+      // Windows - system Chrome/Edge (highly reliable fallback)
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+
     if (isPkg) {
-      // electron-builder bundles chromium via puppeteer into resources
-      const possiblePaths = [
-        // Windows
-        path.join(process.resourcesPath, 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        path.join(process.resourcesPath, 'node_modules', 'puppeteer-core', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        // Try whatsapp-web.js bundled chromium
-        path.join(process.resourcesPath, 'node_modules', 'whatsapp-web.js', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-      ];
-      puppeteerExecPath = possiblePaths.find(p => fs.existsSync(p));
-      if (puppeteerExecPath) {
-        logToFile('[Main] Found Puppeteer Chromium at:', puppeteerExecPath);
-      } else {
-        logToFile('[Main] WARNING: Could not find bundled Chromium. WhatsApp may not work in packaged app.');
-      }
+      // Packaged app paths
+      possiblePaths.unshift(
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'puppeteer-core', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'whatsapp-web.js', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        path.join(process.resourcesPath, 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe')
+      );
+    } else {
+      // Dev paths (node_modules)
+      possiblePaths.unshift(
+        path.join(__dirname, '../node_modules/puppeteer/.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
+        path.join(__dirname, '../node_modules/whatsapp-web.js/node_modules/puppeteer/.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe')
+      );
+    }
+
+    puppeteerExecPath = possiblePaths.find(p => fs.existsSync(p));
+    
+    if (puppeteerExecPath) {
+      logToFile('[Main] Found Puppeteer Chromium/Browser at:', puppeteerExecPath);
+    } else {
+      logToFile('[Main] WARNING: Could not find any suitable browser executable. WhatsApp may fail to start.');
     }
 
     whatsappClient = new Client({
       authStrategy: new LocalAuth({
         dataPath: authPath
       }),
+      webVersionCache: {
+        type: 'none',
+      },
       puppeteer: {
         headless: true,
         ...(puppeteerExecPath ? { executablePath: puppeteerExecPath } : {}),
@@ -343,13 +362,6 @@ function getClient(): Client {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-sync',
         ]
       }
     });

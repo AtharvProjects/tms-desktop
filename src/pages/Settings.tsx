@@ -15,6 +15,8 @@ export default function Settings() {
   const [companySub, setCompanySub] = useState('Reliable Cargo & Transportation Services')
   const [companyGst, setCompanyGst] = useState('27GTA12345Z678')
   const [companyAddr, setCompanyAddr] = useState('Mumbai, Maharashtra')
+  const [ownerName, setOwnerName] = useState('')
+  const [ownerPhone, setOwnerPhone] = useState('')
 
   // Theme state
   const [theme, setTheme] = useState('light')
@@ -141,6 +143,11 @@ export default function Settings() {
     if (savedGst) setCompanyGst(savedGst)
     if (savedAddr) setCompanyAddr(savedAddr)
 
+    const savedOwner = localStorage.getItem('ownerName')
+    const savedPhone = localStorage.getItem('ownerPhone')
+    if (savedOwner) setOwnerName(savedOwner)
+    if (savedPhone) setOwnerPhone(savedPhone)
+
     // Load theme
     const savedTheme = localStorage.getItem('theme') || 'light'
     setTheme(savedTheme)
@@ -235,6 +242,8 @@ export default function Settings() {
     localStorage.setItem('companySub', companySub)
     localStorage.setItem('companyGst', companyGst)
     localStorage.setItem('companyAddr', companyAddr)
+    localStorage.setItem('ownerName', ownerName)
+    localStorage.setItem('ownerPhone', ownerPhone)
 
     setSuccess(true)
     setTimeout(() => {
@@ -323,6 +332,26 @@ export default function Settings() {
                       onChange={(e) => setCompanyAddr(e.target.value)}
                       className="bg-background/50 border-white/10 h-12 text-base"
                       placeholder={t('e.g. Mumbai, Maharashtra')}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerName" className="text-sm font-semibold">{t('Owner Name')}</Label>
+                    <Input 
+                      id="ownerName"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                      className="bg-background/50 border-white/10 h-12 text-base"
+                      placeholder={t('e.g. Rahul Sharma')}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerPhone" className="text-sm font-semibold">{t('Owner Phone No')}</Label>
+                    <Input 
+                      id="ownerPhone"
+                      value={ownerPhone}
+                      onChange={(e) => setOwnerPhone(e.target.value)}
+                      className="bg-background/50 border-white/10 h-12 text-base"
+                      placeholder={t('e.g. 9876543210')}
                     />
                   </div>
                 </div>

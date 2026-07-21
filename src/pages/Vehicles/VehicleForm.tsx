@@ -34,7 +34,6 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
       driverId: initialData?.driverId || '',
       status: initialData?.status || 'Active',
       currentKms: initialData?.currentKms || 0,
-      currentLocation: initialData?.currentLocation || '',
       rcImagePath: initialData?.rcImagePath || '',
       insuranceImagePath: initialData?.insuranceImagePath || '',
       fitnessImagePath: initialData?.fitnessImagePath || '',
@@ -164,15 +163,9 @@ export function VehicleForm({ initialData, drivers, onSubmit, onCancel, isSubmit
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="currentKms">{t('Odometer (Current KMs)')}</Label>
-          <Input id="currentKms" type="number" {...register('currentKms')} className="bg-background/50 border-white/10" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="currentLocation">{t('Current Location')}</Label>
-          <Input id="currentLocation" {...register('currentLocation')} placeholder={t('e.g. Base Station')} className="bg-background/50 border-white/10" />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="currentKms">{t('Odometer (Current KMs)')}</Label>
+        <Input id="currentKms" type="number" {...register('currentKms')} className="bg-background/50 border-white/10" />
       </div>
 
       <div className="space-y-2">

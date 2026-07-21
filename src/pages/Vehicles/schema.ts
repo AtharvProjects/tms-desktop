@@ -11,7 +11,6 @@ export const vehicleSchema = z.object({
   driverId: z.string().nullable().optional(),
   status: z.enum(['Active', 'Maintenance', 'Inactive', 'On-Trip']).default('Active'),
   currentKms: z.coerce.number().min(0).default(0),
-  currentLocation: z.string().nullable().optional(),
   rcImagePath: z.string().nullable().optional(),
   insuranceImagePath: z.string().nullable().optional(),
   fitnessImagePath: z.string().nullable().optional(),

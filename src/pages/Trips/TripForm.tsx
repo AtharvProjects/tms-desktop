@@ -28,6 +28,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
     resolver: zodResolver(tripSchema) as any,
     defaultValues: {
       tripNo: initialData?.tripNo || '',
+      tripName: initialData?.tripName || '',
       tripDate: initialData?.tripDate ? new Date(initialData.tripDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       vehicleId: initialData?.vehicleId || '',
       partyId: initialData?.partyId || '',
@@ -65,6 +66,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       tollEntries: initialData?.tollEntries?.map((t: any) => ({...t, date: new Date(t.date).toISOString().split('T')[0]})) || [],
       maintenanceEntries: initialData?.maintenanceEntries?.map((m: any) => ({...m, date: new Date(m.date).toISOString().split('T')[0]})) || [],
       dieselEntries: initialData?.dieselEntries?.map((d: any) => ({...d, date: new Date(d.date).toISOString().split('T')[0]})) || [],
+      liquidEntries: initialData?.liquidEntries?.map((l: any) => ({...l, date: new Date(l.date).toISOString().split('T')[0]})) || [],
       tripLinks: initialData?.tripLinks?.map((l: any) => ({...l, date: new Date(l.date).toISOString().split('T')[0]})) || [],
     }
   });
@@ -75,6 +77,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
   const { fields: tollFields, append: appendToll, remove: removeToll } = useFieldArray({ control, name: 'tollEntries' });
   const { fields: maintFields, append: appendMaint, remove: removeMaint } = useFieldArray({ control, name: 'maintenanceEntries' });
   const { fields: dieselFields, append: appendDiesel, remove: removeDiesel } = useFieldArray({ control, name: 'dieselEntries' });
+  const { fields: liquidFields, append: appendLiquid, remove: removeLiquid } = useFieldArray({ control, name: 'liquidEntries' });
   const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({ control, name: 'tripLinks' });
 
   const freightAmount = watch('freightAmount') || 0;
@@ -97,11 +100,15 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="space-y-2">
           <Label>{t('Trip Number *')}</Label>
           <Input {...register('tripNo')} className="bg-background/50 border-white/10 font-mono font-bold" readOnly={isEdit} />
           {errors.tripNo && <p className="text-red-500 text-xs">{errors.tripNo.message}</p>}
+        </div>
+        <div className="space-y-2">
+          <Label>{t('Trip Name')}</Label>
+          <Input {...register('tripName')} className="bg-background/50 border-white/10" placeholder="e.g. Mumbai Delivery" />
         </div>
         <div className="space-y-2">
           <Label>{t('Trip Date *')}</Label>
@@ -253,7 +260,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       </div>
 
       <Card className="bg-background/20 border-white/10 mt-4">
-        <CardHeader className="py-3"><CardTitle className="text-sm">{t('Toll Entries')}</CardTitle></CardHeader>
+        <CardHeader className="py-3"><CardTitle className="text-sm">{t('Fastag / Toll Entries')}</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           {tollFields.map((field, index) => (
             <div key={field.id} className="flex gap-2 items-end">
@@ -288,15 +295,30 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         <CardContent className="space-y-2">
           {dieselFields.map((field, index) => (
             <div key={field.id} className="flex gap-2 items-end">
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Station')}</Label><Input {...register(`dieselEntries.${index}.fuelStation`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Litres')}</Label><Input type="number" {...register(`dieselEntries.${index}.litres`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Rate')}</Label><Input type="number" {...register(`dieselEntries.${index}.ratePerLitre`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Total')}</Label><Input type="number" {...register(`dieselEntries.${index}.totalCost`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Diesel (Quantity)')}</Label><Input type="number" {...register(`dieselEntries.${index}.litres`)} className="h-8 bg-background/50" /></div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Date')}</Label><Input type="date" {...register(`dieselEntries.${index}.date`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Price')}</Label><Input type="number" {...register(`dieselEntries.${index}.ratePerLitre`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Total')}</Label><Input type="number" {...register(`dieselEntries.${index}.totalCost`)} className="h-8 bg-background/50" /></div>
               <Button type="button" variant="ghost" size="sm" onClick={() => removeDiesel(index)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="w-4 h-4"/></Button>
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => appendDiesel({ fuelStation: '', litres: 0, ratePerLitre: 0, totalCost: 0, date: new Date().toISOString().split('T')[0] })} className="mt-2 h-8 text-xs"><Plus className="w-3 h-3 mr-1"/> {t('Add Diesel')}</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-background/20 border-white/10 mt-4">
+        <CardHeader className="py-3"><CardTitle className="text-sm">{t('Liquid Entries')}</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {liquidFields.map((field, index) => (
+            <div key={field.id} className="flex gap-2 items-end">
+              <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Diesel (Quantity)')}</Label><Input type="number" {...register(`liquidEntries.${index}.litres`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Date')}</Label><Input type="date" {...register(`liquidEntries.${index}.date`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Price')}</Label><Input type="number" {...register(`liquidEntries.${index}.ratePerLitre`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Total')}</Label><Input type="number" {...register(`liquidEntries.${index}.totalCost`)} className="h-8 bg-background/50" /></div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => removeLiquid(index)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="w-4 h-4"/></Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => appendLiquid({ litres: 0, ratePerLitre: 0, totalCost: 0, date: new Date().toISOString().split('T')[0] })} className="mt-2 h-8 text-xs"><Plus className="w-3 h-3 mr-1"/> {t('Add Liquid')}</Button>
         </CardContent>
       </Card>
 

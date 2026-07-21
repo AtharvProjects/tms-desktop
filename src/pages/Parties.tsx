@@ -46,6 +46,7 @@ export default function Parties() {
   const [companyName, setCompanyName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
   const [outstandingBalance, setOutstandingBalance] = useState('0');
   const [status, setStatus] = useState('Active');
   const [error, setError] = useState('');
@@ -90,7 +91,7 @@ export default function Parties() {
           </div>
           <div className="text-right">
             <h1 className="text-xl font-bold uppercase text-orange-600">{t('OUTSTANDING STATEMENT')}</h1>
-            <p className="text-xs text-slate-500 mt-1">{t('Date:')} {new Date().toLocaleDateString()}</p>
+            <p className="text-xs text-slate-500 mt-1">{t('Date:')} {new Date().toLocaleDateString('en-GB')}</p>
           </div>
         </div>
         <div className="py-6 text-sm">
@@ -110,7 +111,7 @@ export default function Parties() {
             </thead>
             <tbody className="divide-y divide-slate-200 font-mono">
               <tr>
-                <td className="p-3 font-sans"><p className="font-bold text-slate-800">{t('Outstanding Account Balance')}</p><p className="text-xs text-slate-500 mt-0.5">{t('As of ')}{new Date().toLocaleDateString()}</p></td>
+                <td className="p-3 font-sans"><p className="font-bold text-slate-800">{t('Outstanding Account Balance')}</p><p className="text-xs text-slate-500 mt-0.5">{t('As of ')}{new Date().toLocaleDateString('en-GB')}</p></td>
                 <td className="p-3 text-right font-bold text-orange-600 text-base">{formatCurrency(party.outstandingBalance || 0)}</td>
               </tr>
             </tbody>
@@ -201,6 +202,7 @@ export default function Parties() {
         companyName,
         contactPerson: contactPerson || null,
         phone: phone || null,
+        address: address || null,
         outstandingBalance: parseFloat(outstandingBalance) || 0,
         status
       }
@@ -236,6 +238,7 @@ export default function Parties() {
         companyName,
         contactPerson: contactPerson || null,
         phone: phone || null,
+        address: address || null,
         outstandingBalance: parseFloat(outstandingBalance) || 0,
         status
       }
@@ -253,6 +256,7 @@ export default function Parties() {
     setCompanyName(party.companyName);
     setContactPerson(party.contactPerson || '');
     setPhone(party.phone || '');
+    setAddress(party.address || '');
     setOutstandingBalance(String(party.outstandingBalance || 0));
     setStatus(party.status);
     setError('');
@@ -274,6 +278,7 @@ export default function Parties() {
     setCompanyName('');
     setContactPerson('');
     setPhone('');
+    setAddress('');
     setOutstandingBalance('0');
     setStatus('Active');
     setError('');
@@ -298,6 +303,10 @@ export default function Parties() {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2"><Label>{t('Phone Number')}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('e.g. 9876543210')} className="bg-background/50 border-white/10" /></div>
         <div className="space-y-2"><Label>{t('Outstanding Balance (₹)')}</Label><Input type="number" value={outstandingBalance} onChange={(e) => setOutstandingBalance(e.target.value)} className="bg-background/50 border-white/10" /></div>
+      </div>
+      <div className="space-y-2">
+        <Label>{t('Address')}</Label>
+        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('e.g. 123 Main St, City')} className="bg-background/50 border-white/10" />
       </div>
       <div className="space-y-2">
         <Label>{t('Status')}</Label>
@@ -385,6 +394,7 @@ export default function Parties() {
                   <TableHead>{t('Company Name')}</TableHead>
                   <TableHead>{t('Contact Person')}</TableHead>
                   <TableHead>{t('Phone')}</TableHead>
+                  <TableHead>{t('Address')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead className="text-right">{t('Outstanding')}</TableHead>
                   <TableHead className="text-center">{t('Actions')}</TableHead>
@@ -413,6 +423,7 @@ export default function Parties() {
                           )}
                         </div>
                       </TableCell>
+                      <TableCell>{party.address || '-'}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={party.status === 'Active' ? 'border-green-500/30 text-green-500 bg-green-500/10' : 'border-red-500/30 text-red-500 bg-red-500/10'}>
                           {t(party.status)}

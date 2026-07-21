@@ -65,7 +65,7 @@ export default function Trips() {
     ['trips', 'all'],
     'trip',
     'findMany',
-    { include: { vehicle: true, party: true, driver: true, directDrivers: true, driverAdvances: true, driverChanges: true, tollEntries: true, maintenanceEntries: true, dieselEntries: true, tripLinks: true }, orderBy: { createdAt: 'desc' } }
+    { include: { vehicle: true, party: true, driver: true, directDrivers: true, driverAdvances: true, driverChanges: true, tollEntries: true, maintenanceEntries: true, dieselEntries: true, liquidEntries: true, tripLinks: true }, orderBy: { createdAt: 'desc' } }
   );
   
   const { data: allVehicles = [] } = usePrismaQuery<Vehicle[]>(['vehicles', 'all'], 'vehicle', 'findMany', { orderBy: { vehicleNumber: 'asc' } });
@@ -94,7 +94,7 @@ export default function Trips() {
   };
 
   const handleCreate = (data: TripFormValues) => {
-    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, tripLinks, ...restData } = data;
+    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, liquidEntries, tripLinks, ...restData } = data;
     createMutation.mutate({
       data: {
         ...restData,
@@ -110,6 +110,7 @@ export default function Trips() {
         tollEntries: { create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
         maintenanceEntries: { create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
         dieselEntries: { create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
+        liquidEntries: { create: liquidEntries.map(l => ({ litres: l.litres, ratePerLitre: l.ratePerLitre, totalCost: l.totalCost, date: new Date(l.date) })) },
         tripLinks: { create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
       }
     }, {
@@ -123,7 +124,7 @@ export default function Trips() {
 
   const handleUpdate = (data: TripFormValues) => {
     if (!selectedTrip) return;
-    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, tripLinks, ...restData } = data;
+    const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, liquidEntries, tripLinks, ...restData } = data;
     updateMutation.mutate({
       where: { id: selectedTrip.id },
       data: {
@@ -140,6 +141,7 @@ export default function Trips() {
         tollEntries: { deleteMany: {}, create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
         maintenanceEntries: { deleteMany: {}, create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
         dieselEntries: { deleteMany: {}, create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
+        liquidEntries: { deleteMany: {}, create: liquidEntries.map(l => ({ litres: l.litres, ratePerLitre: l.ratePerLitre, totalCost: l.totalCost, date: new Date(l.date) })) },
         tripLinks: { deleteMany: {}, create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
       }
     }, {
@@ -158,13 +160,13 @@ export default function Trips() {
     updateMutation.mutate({
       where: { id: selectedTrip.id },
       data: {
-        dieselAmount: data.dieselAmount,
-        liquidDiesel: data.liquidDiesel,
-        toll: data.toll,
-        maintenance: data.maintenance,
-        extraRunning: data.extraRunning,
-        extraCharges: data.extraCharges,
-        driverCash: data.driverCash,
+        dieselAmount: parseFloat(data.dieselAmount as any) || 0,
+        liquidDiesel: parseFloat(data.liquidDiesel as any) || 0,
+        toll: parseFloat(data.toll as any) || 0,
+        maintenance: parseFloat(data.maintenance as any) || 0,
+        extraRunning: parseFloat(data.extraRunning as any) || 0,
+        extraCharges: parseFloat(data.extraCharges as any) || 0,
+        driverCash: parseFloat(data.driverCash as any) || 0,
         status: 'Completed',
         podStatus: 'Received',
         notes: data.notes || null,
@@ -224,10 +226,10 @@ export default function Trips() {
     const headers = ['Trip No', 'Date', 'Report Date', 'Loading Date', 'Unloading Date', 'Vehicle', 'Driver', 'Party', 'From', 'To', 'Material', 'Billing Type', 'Freight', 'Party Advance', 'Driver Advance', 'Balance', 'Commission', 'Maintenance', 'Fastag/Toll', 'Diesel', 'Liquid Diesel', 'Driver Cash', 'Extra Running', 'Detention Time', 'Extra Charges', 'Net Profit', 'POD Status', 'Payment Status', 'Notes'];
     const rows = filteredTrips.map(t => [
       t.tripNo,
-      new Date(t.tripDate).toLocaleDateString(),
-      t.reportDate ? new Date(t.reportDate).toLocaleDateString() : '',
-      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString() : '',
-      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString() : '',
+      new Date(t.tripDate).toLocaleDateString('en-GB'),
+      t.reportDate ? new Date(t.reportDate).toLocaleDateString('en-GB') : '',
+      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString('en-GB') : '',
+      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString('en-GB') : '',
       t.vehicle?.vehicleNumber || '',
       t.driver?.driverName || '',
       t.party?.companyName || '',
@@ -273,10 +275,10 @@ export default function Trips() {
     const headers = ['Trip No', 'Date', 'Report Date', 'Loading Date', 'Unloading Date', 'Vehicle', 'Driver', 'Party', 'From', 'To', 'Material', 'Billing Type', 'Freight', 'Party Advance', 'Driver Advance', 'Balance', 'Commission', 'Maintenance', 'Fastag/Toll', 'Diesel', 'Liquid Diesel', 'Driver Cash', 'Extra Running', 'Detention Time', 'Extra Charges', 'Net Profit', 'POD Status', 'Payment Status', 'Notes'];
     const rows = filteredTrips.map(t => [
       t.tripNo,
-      new Date(t.tripDate).toLocaleDateString(),
-      t.reportDate ? new Date(t.reportDate).toLocaleDateString() : '',
-      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString() : '',
-      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString() : '',
+      new Date(t.tripDate).toLocaleDateString('en-GB'),
+      t.reportDate ? new Date(t.reportDate).toLocaleDateString('en-GB') : '',
+      t.loadingDate ? new Date(t.loadingDate).toLocaleDateString('en-GB') : '',
+      t.unloadingDate ? new Date(t.unloadingDate).toLocaleDateString('en-GB') : '',
       t.vehicle?.vehicleNumber || '',
       t.driver?.driverName || '',
       t.party?.companyName || '',
@@ -509,7 +511,8 @@ export default function Trips() {
                         <TableRow key={trip.id} className="border-white/10 hover:bg-white/5">
                           <TableCell>
                             <div className="font-semibold text-primary">{trip.tripNo}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{new Date(trip.tripDate).toLocaleDateString()}</div>
+                            {trip.tripName && <div className="text-sm font-medium text-foreground mt-0.5">{trip.tripName}</div>}
+                            <div className="text-xs text-muted-foreground mt-0.5">{new Date(trip.tripDate).toLocaleDateString('en-GB')}</div>
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">{trip.vehicle?.vehicleNumber}</div>

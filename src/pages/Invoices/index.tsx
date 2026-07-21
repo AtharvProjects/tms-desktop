@@ -47,11 +47,13 @@ export default function Invoices() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // System Config
-  const systemCompanyName = localStorage.getItem('companyName') || 'TMS Logistics Pro';
-  const systemCompanySub = localStorage.getItem('companySub') || 'Reliable Cargo & Transportation Services';
-  const systemCompanyGst = localStorage.getItem('companyGst') || '27GTA12345Z678';
-  const systemCompanyAddr = localStorage.getItem('companyAddr') || 'Mumbai, Maharashtra';
-  const systemCompanyBank = localStorage.getItem('companyBank') || 'HDFC Bank, Ac: 50100000000000, IFSC: HDFC0000001';
+  const systemCompanyName = localStorage.getItem('companyName') !== null ? localStorage.getItem('companyName') : 'TMS Logistics Pro';
+  const systemCompanySub = localStorage.getItem('companySub') !== null ? localStorage.getItem('companySub') : 'Reliable Cargo & Transportation Services';
+  const systemCompanyGst = localStorage.getItem('companyGst') !== null ? localStorage.getItem('companyGst') : '27GTA12345Z678';
+  const systemCompanyAddr = localStorage.getItem('companyAddr') !== null ? localStorage.getItem('companyAddr') : 'Mumbai, Maharashtra';
+  const systemCompanyBank = localStorage.getItem('companyBank') !== null ? localStorage.getItem('companyBank') : 'HDFC Bank, Ac: 50100000000000, IFSC: HDFC0000001';
+  const systemOwnerName = localStorage.getItem('ownerName') !== null ? localStorage.getItem('ownerName') : '';
+  const systemOwnerPhone = localStorage.getItem('ownerPhone') !== null ? localStorage.getItem('ownerPhone') : '';
 
   const { data: invoices = [], isLoading, refetch } = usePrismaQuery<InvoiceWithRelations[]>(
     ['invoices', 'all'],
@@ -220,10 +222,15 @@ export default function Invoices() {
       <div id="printable-invoice" className="bg-white text-slate-900 p-8 rounded-xl border border-slate-200 shadow-sm font-sans">
         <div className="flex justify-between items-start border-b border-slate-200 pb-6">
           <div>
-            <h2 className="text-3xl font-black tracking-tight text-primary uppercase">{systemCompanyName}</h2>
-            <p className="text-sm font-medium text-slate-500 mt-1">{systemCompanySub}</p>
-            <p className="text-xs text-slate-500 mt-1">GSTIN: {systemCompanyGst}</p>
-            <p className="text-xs text-slate-500 max-w-[250px]">{systemCompanyAddr}</p>
+            {(systemCompanyName || systemCompanySub || systemCompanyGst || systemCompanyAddr || systemOwnerName || systemOwnerPhone) ? (
+              <>
+                {systemCompanyName && <h2 className="text-3xl font-black tracking-tight text-primary uppercase">{systemCompanyName}</h2>}
+                {systemCompanySub && <p className="text-sm font-medium text-slate-500 mt-1">{systemCompanySub}</p>}
+                {systemOwnerName && <p className="text-sm font-medium text-slate-600 mt-1">{systemOwnerName} {systemOwnerPhone && `| ${systemOwnerPhone}`}</p>}
+                {systemCompanyGst && <p className="text-xs text-slate-500 mt-1">GSTIN: {systemCompanyGst}</p>}
+                {systemCompanyAddr && <p className="text-xs text-slate-500 max-w-[250px]">{systemCompanyAddr}</p>}
+              </>
+            ) : <div />}
           </div>
           <div className="text-right">
             <h1 className="text-4xl font-bold uppercase text-slate-200 tracking-wider">Invoice</h1>
@@ -231,7 +238,7 @@ export default function Invoices() {
               <span className="text-slate-500 text-right">{t('Invoice No:')}</span>
               <span className="font-bold">{invoice.invoiceNumber}</span>
               <span className="text-slate-500 text-right">{t('Date:')}</span>
-              <span className="font-medium">{new Date(invoice.date).toLocaleDateString()}</span>
+              <span className="font-medium">{new Date(invoice.date).toLocaleDateString('en-GB')}</span>
               <span className="text-slate-500 text-right">{t('Trip Ref')}</span>
               <span className="font-mono">{invoice.trip?.tripNo}</span>
             </div>
@@ -298,7 +305,7 @@ export default function Invoices() {
               <div className="flex justify-between text-sm text-green-600 border-t border-slate-100 pt-2"><span>{t('Amount Paid')}</span><span className="font-mono">-{formatCurrency(invoice.amountPaid)}</span></div>
             )}
             {(invoice.amountPaid || 0) > 0 && (
-              <div className="flex justify-between text-sm font-bold text-orange-600 bg-orange-50 p-2 rounded"><span>{t('Balance Due:')}</span><span className="font-mono">{formatCurrency(invoice.totalAmount - invoice.amountPaid)}</span></div>
+              <div className={`flex justify-between text-sm font-bold p-2 rounded ${invoice.totalAmount - invoice.amountPaid <= 0 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50'}`}><span>{t('Balance Due:')}</span><span className="font-mono">{formatCurrency(Math.max(0, invoice.totalAmount - invoice.amountPaid))}</span></div>
             )}
           </div>
         </div>
@@ -418,7 +425,7 @@ export default function Invoices() {
                         <div className="flex flex-col">
                           <span className="font-mono font-bold text-foreground">{invoice.invoiceNumber}</span>
                           <span className="text-xs text-muted-foreground flex items-center mt-1">
-                            <Calendar className="h-3 w-3 mr-1" />{new Date(invoice.date).toLocaleDateString()}
+                            <Calendar className="h-3 w-3 mr-1" />{new Date(invoice.date).toLocaleDateString('en-GB')}
                           </span>
                         </div>
                       </TableCell>

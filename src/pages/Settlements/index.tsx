@@ -44,7 +44,7 @@ export default function Settlements() {
     let driverOwesCompany = 0; // Ghene
 
     // Calculate from trips
-    driver.trips.forEach((trip: any) => {
+    driver.trips?.forEach((trip: any) => {
       companyOwesDriver += trip.commission || 0; // Assuming commission acts as driver pay per trip
       companyOwesDriver += trip.toll || 0;
       companyOwesDriver += trip.maintenance || 0;

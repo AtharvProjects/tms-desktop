@@ -335,7 +335,7 @@ export default function Dashboard() {
                   <div key={trip.id} className="flex items-center justify-between p-2 rounded bg-white/5 border border-red-500/20 cursor-pointer hover:bg-white/10" onClick={() => navigate('/trips')}>
                     <div>
                       <p className="font-semibold text-sm">{trip.tripNo}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{new Date(trip.tripDate).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{new Date(trip.tripDate).toLocaleDateString('en-GB')}</p>
                     </div>
                     <Badge className="bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/30">{t('Action Needed')}</Badge>
                   </div>

@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
+import logoUrl from '@/assets/logo.png'
 import { motion } from 'framer-motion'
 import { 
   LayoutDashboard, 
@@ -12,7 +13,8 @@ import {
   Car,
   Languages,
   Monitor,
-  Wallet
+  Wallet,
+  BookOpen
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -24,14 +26,15 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { name: 'Trips', path: '/trips', icon: Truck },
-  { name: 'Vehicles', path: '/vehicles', icon: Car },
-  { name: 'Drivers', path: '/drivers', icon: Users },
-  { name: 'Settlements', path: '/settlements', icon: Wallet },
   { name: 'Parties', path: '/parties', icon: Users },
+  { name: 'Drivers', path: '/drivers', icon: Users },
+  { name: 'Vehicles', path: '/vehicles', icon: Car },
+  { name: 'Trips', path: '/trips', icon: Truck },
+  { name: 'Settlements', path: '/settlements', icon: Wallet },
   { name: 'Diesel', path: '/diesel', icon: Fuel },
   { name: 'Expenses', path: '/expenses', icon: Receipt },
   { name: 'Invoices', path: '/invoices', icon: FileText },
+  { name: 'Driver Notes', path: '/driver-notes', icon: BookOpen },
   { name: 'Settings', path: '/settings', icon: Settings },
 ]
 
@@ -61,9 +64,12 @@ export default function AppLayout() {
       {/* Sidebar - Glassmorphism */}
       <aside className="w-72 flex-shrink-0 glass-sidebar flex flex-col pt-14 relative z-40 transition-all duration-300">
         <div className="px-8 pb-8">
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400">
-            TMS Pro
-          </h1>
+          <div className="flex items-center gap-3">
+            <img src={logoUrl} alt="JTT Logo" className="w-10 h-10 object-contain" />
+            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400">
+              JTT
+            </h1>
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Logistics & Transport</p>
         </div>
 

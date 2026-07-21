@@ -36,6 +36,7 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
   const [maintCost, setMaintCost] = useState('');
   const [maintOdo, setMaintOdo] = useState('');
   const [maintDesc, setMaintDesc] = useState('');
+  const [maintNotes, setMaintNotes] = useState('');
 
   const addMaintenanceMutation = usePrismaMutation('maintenanceLog', 'create', [['vehicles', 'all']]);
   const updateVehicleMutation = usePrismaMutation('vehicle', 'update', [['vehicles', 'all']]);
@@ -50,7 +51,8 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
         type: maintType,
         cost: parseFloat(maintCost) || 0,
         odometer: parseInt(maintOdo, 10) || null,
-        description: maintDesc || null
+        description: maintDesc || null,
+        notes: maintNotes || null
       }
     }, {
       onSuccess: () => {
@@ -63,6 +65,7 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
         }
         setMaintCost('');
         setMaintDesc('');
+        setMaintNotes('');
       }
     });
   };
@@ -76,7 +79,7 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-          <form onSubmit={handleAddMaintenance} className="grid grid-cols-5 gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20 items-end">
+          <form onSubmit={handleAddMaintenance} className="grid grid-cols-6 gap-3 p-4 bg-primary/5 rounded-lg border border-primary/20 items-end">
             <div className="space-y-1 col-span-1">
               <Label className="text-xs">{t('Type')}</Label>
               <select value={maintType} onChange={(e) => setMaintType(e.target.value)} className="w-full h-8 px-2 rounded-md bg-background/50 border border-white/10 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
@@ -99,6 +102,10 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
               <Label className="text-xs">{t('Details/Serial No')}</Label>
               <Input value={maintDesc} onChange={(e) => setMaintDesc(e.target.value)} className="h-8 text-xs bg-background/50 border-white/10" required />
             </div>
+            <div className="space-y-1 col-span-1">
+              <Label className="text-xs">{t('Notes')}</Label>
+              <Input value={maintNotes} onChange={(e) => setMaintNotes(e.target.value)} className="h-8 text-xs bg-background/50 border-white/10" placeholder="Optional" />
+            </div>
             <div className="col-span-1">
               <Button type="submit" disabled={addMaintenanceMutation.isPending} size="sm" className="w-full h-8 bg-primary hover:bg-primary/90 text-xs">
                 {addMaintenanceMutation.isPending ? t('Adding...') : t('Add Log')}
@@ -115,24 +122,26 @@ export function MaintenanceModal({ vehicle, isOpen, onOpenChange }: MaintenanceM
                   <TableHead className="py-2 text-xs">{t('Cost')}</TableHead>
                   <TableHead className="py-2 text-xs">{t('Odometer')}</TableHead>
                   <TableHead className="py-2 text-xs">{t('Details')}</TableHead>
+                  <TableHead className="py-2 text-xs">{t('Notes')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {vehicle?.maintenanceLogs && vehicle.maintenanceLogs.length > 0 ? (
                   vehicle.maintenanceLogs.map((log: any) => (
                     <TableRow key={log.id} className="hover:bg-white/5 border-white/10">
-                      <TableCell className="py-2 text-xs text-muted-foreground">{new Date(log.date).toLocaleDateString()}</TableCell>
+                      <TableCell className="py-2 text-xs text-muted-foreground">{new Date(log.date).toLocaleDateString('en-GB')}</TableCell>
                       <TableCell className="py-2 text-xs">
                         <Badge variant="outline" className="text-[10px] py-0">{t(log.type)}</Badge>
                       </TableCell>
                       <TableCell className="py-2 text-xs font-bold text-orange-400">₹{log.cost.toLocaleString()}</TableCell>
                       <TableCell className="py-2 text-xs">{log.odometer || '-'}</TableCell>
                       <TableCell className="py-2 text-xs">{log.description}</TableCell>
+                      <TableCell className="py-2 text-xs text-muted-foreground">{log.notes || '-'}</TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">{t('No maintenance logs recorded.')}</TableCell>
+                    <TableCell colSpan={6} className="py-4 text-center text-xs text-muted-foreground">{t('No maintenance logs recorded.')}</TableCell>
                   </TableRow>
                 )}
               </TableBody>

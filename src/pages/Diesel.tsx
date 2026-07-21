@@ -39,12 +39,14 @@ export default function Diesel() {
 
   // Form State
   const [vehicleId, setVehicleId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [fuelStation, setFuelStation] = useState('');
-  const [litres, setLitres] = useState('');
-  const [ratePerLitre, setRatePerLitre] = useState('');
-  const [odometer, setOdometer] = useState('');
   const [tripReference, setTripReference] = useState('');
+  const [entries, setEntries] = useState([{
+    date: new Date().toISOString().split('T')[0],
+    fuelStation: '',
+    litres: '',
+    ratePerLitre: '',
+    odometer: ''
+  }]);
   const [error, setError] = useState('');
 
   const { data: logs = [], isLoading, refetch } = usePrismaQuery<DieselLogWithVehicle[]>(
@@ -68,7 +70,7 @@ export default function Diesel() {
     { orderBy: { tripNo: 'desc' } }
   );
 
-  const createMutation = usePrismaMutation<any, DieselLog>('dieselLog', 'create', [['dieselLogs', 'all']]);
+  const createMutation = usePrismaMutation<any, any>('dieselLog', 'createMany', [['dieselLogs', 'all']]);
   const deleteMutation = usePrismaMutation<any, DieselLog>('dieselLog', 'delete', [['dieselLogs', 'all']]);
 
   const getMileage = (log: DieselLogWithVehicle, index: number) => {
@@ -80,32 +82,42 @@ export default function Diesel() {
     return mileage.toFixed(2);
   };
 
-  const calculatedTotalCost = (parseFloat(litres) || 0) * (parseFloat(ratePerLitre) || 0);
+  const getEntryCost = (entry: any) => (parseFloat(entry.litres) || 0) * (parseFloat(entry.ratePerLitre) || 0);
+  const calculatedTotalCost = entries.reduce((acc, entry) => acc + getEntryCost(entry), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!vehicleId || !litres || !ratePerLitre) {
-      setError(t('Vehicle, Litres, and Rate per Litre are required'));
+    if (!vehicleId) {
+      setError(t('Vehicle is required'));
       return;
     }
-    createMutation.mutate({
-      data: {
-        vehicleId,
-        date: new Date(date),
-        fuelStation: fuelStation || null,
-        litres: parseFloat(litres),
-        ratePerLitre: parseFloat(ratePerLitre),
-        totalCost: calculatedTotalCost,
-        odometer: odometer ? parseInt(odometer) : null
-      }
-    }, {
-      onSuccess: () => {
-        setIsOpen(false);
-        resetForm();
-      },
-      onError: (err: any) => setError(err.message)
-    });
+    
+    try {
+      const dataToInsert = entries.map(entry => {
+        if (!entry.litres || !entry.ratePerLitre) {
+          throw new Error(t('Litres and Rate per Litre are required for all entries'));
+        }
+        return {
+          vehicleId,
+          tripId: tripReference || null,
+          date: new Date(entry.date),
+          fuelStation: entry.fuelStation || null,
+          litres: parseFloat(entry.litres),
+          ratePerLitre: parseFloat(entry.ratePerLitre),
+          totalCost: getEntryCost(entry),
+          odometer: entry.odometer ? parseInt(entry.odometer) : null
+        };
+      });
+
+      await createMutation.mutateAsync({
+        data: dataToInsert
+      });
+      setIsOpen(false);
+      resetForm();
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleDelete = () => {
@@ -121,12 +133,14 @@ export default function Diesel() {
 
   const resetForm = () => {
     setVehicleId('');
-    setDate(new Date().toISOString().split('T')[0]);
-    setFuelStation('');
-    setLitres('');
-    setRatePerLitre('');
-    setOdometer('');
     setTripReference('');
+    setEntries([{
+      date: new Date().toISOString().split('T')[0],
+      fuelStation: '',
+      litres: '',
+      ratePerLitre: '',
+      odometer: ''
+    }]);
     setError('');
   };
 
@@ -267,10 +281,9 @@ export default function Diesel() {
                 <TableRow className="border-white/10 hover:bg-white/5">
                   <TableHead>{t('Vehicle')}</TableHead>
                   <TableHead>{t('Date')}</TableHead>
-                  <TableHead>{t('Fuel Station')}</TableHead>
-                  <TableHead className="text-right">{t('Volume (L)')}</TableHead>
-                  <TableHead className="text-right">{t('Rate / L')}</TableHead>
-                  <TableHead className="text-right">{t('Total Cost')}</TableHead>
+                  <TableHead className="text-right">{t('Diesel (Quantity)')}</TableHead>
+                  <TableHead className="text-right">{t('Price')}</TableHead>
+                  <TableHead className="text-right">{t('Total')}</TableHead>
                   <TableHead className="text-right">{t('Odometer')}</TableHead>
                   <TableHead className="text-center">{t('Action')}</TableHead>
                 </TableRow>
@@ -287,11 +300,10 @@ export default function Diesel() {
                       <TableCell className="text-sm">
                         <span className="flex items-center">
                           <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                          {new Date(log.date).toLocaleDateString()}
+                          {new Date(log.date).toLocaleDateString('en-GB')}
                         </span>
                       </TableCell>
-                      <TableCell>{log.fuelStation || t('N/A Station')}</TableCell>
-                      <TableCell className="text-right font-medium">{log.litres.toLocaleString('en-IN')} L</TableCell>
+                      <TableCell className="text-right font-medium">{log.litres.toLocaleString('en-IN')}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(log.ratePerLitre)}</TableCell>
                       <TableCell className="text-right font-bold text-primary">{formatCurrency(log.totalCost)}</TableCell>
                       <TableCell className="text-right font-mono text-xs">
@@ -342,55 +354,79 @@ export default function Diesel() {
       </Card>
 
       <Dialog open={isOpen} onOpenChange={(o) => { setIsOpen(o); if (!o) resetForm(); }}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[450px]">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t('Log Fuel Entry')}</DialogTitle>
+            <DialogTitle>{t('Log Fuel Entries')}</DialogTitle>
             <DialogDescription>{t('Record diesel filling details for fuel tracking and trip reconciliation.')}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
             {error && <div className="bg-red-500/15 border border-red-500/30 text-red-500 text-sm p-3 rounded-lg">{error}</div>}
             
-            <div className="space-y-2">
-              <Label htmlFor="vehicleId">{t('Vehicle / Truck *')}</Label>
-              <select id="vehicleId" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground" required>
-                <option value="">{t('Select Vehicle')}</option>
-                {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicleNumber} ({v.vehicleType})</option>)}
-              </select>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="date">{t('Refuel Date *')}</Label>
-                <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-background/50 border-white/10" required />
+                <Label htmlFor="vehicleId">{t('Vehicle / Truck *')}</Label>
+                <select id="vehicleId" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground" required>
+                  <option value="">{t('Select Vehicle')}</option>
+                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicleNumber} ({v.vehicleType})</option>)}
+                </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="odometer">{t('Odometer (km)')}</Label>
-                <Input id="odometer" type="number" value={odometer} onChange={(e) => setOdometer(e.target.value)} placeholder={t('Current km reading')} className="bg-background/50 border-white/10" />
+                <Label htmlFor="tripReference">{t('Link to Trip (Optional)')}</Label>
+                <select id="tripReference" value={tripReference} onChange={(e) => setTripReference(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
+                  <option value="">{t('None')}</option>
+                  {trips.map(t => <option key={t.id} value={t.id}>{t.tripNo} ({t.from} → {t.to})</option>)}
+                </select>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="fuelStation">{t('Fuel Station / Vendor Name')}</Label>
-              <Input id="fuelStation" value={fuelStation} onChange={(e) => setFuelStation(e.target.value)} placeholder={t('e.g. HP Petrol Pump, Reliance NH4')} className="bg-background/50 border-white/10" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="litres">{t('Fuel Litres Filled *')}</Label>
-                <Input id="litres" type="number" step="0.01" value={litres} onChange={(e) => setLitres(e.target.value)} placeholder={t('e.g. 150')} className="bg-background/50 border-white/10" required />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>{t('Fuel Entries')}</Label>
+                <Button type="button" variant="outline" size="sm" onClick={() => setEntries([...entries, { date: new Date().toISOString().split('T')[0], fuelStation: '', litres: '', ratePerLitre: '', odometer: '' }])}>
+                  <Plus className="h-4 w-4 mr-2" /> {t('Add Entry')}
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="rate">{t('Price per Litre *')}</Label>
-                <Input id="rate" type="number" step="0.01" value={ratePerLitre} onChange={(e) => setRatePerLitre(e.target.value)} placeholder={t('e.g. 91.50')} className="bg-background/50 border-white/10" required />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tripReference">{t('Link to Trip (Optional)')}</Label>
-              <select id="tripReference" value={tripReference} onChange={(e) => setTripReference(e.target.value)} className="w-full h-10 px-3 rounded-md bg-background/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary text-sm text-foreground">
-                <option value="">{t('None')}</option>
-                {trips.map(t => <option key={t.id} value={t.tripNo}>{t.tripNo} ({t.from} → {t.to})</option>)}
-              </select>
+              
+              {entries.map((entry, index) => (
+                <Card key={index} className="bg-white/5 border-white/10 relative">
+                  {entries.length > 1 && (
+                    <Button type="button" variant="ghost" size="sm" className="absolute top-2 right-2 h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => {
+                      const newEntries = [...entries];
+                      newEntries.splice(index, 1);
+                      setEntries(newEntries);
+                    }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <CardContent className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-2">
+                        <Label>{t('Date *')}</Label>
+                        <Input type="date" value={entry.date} onChange={(e) => { const newEntries = [...entries]; newEntries[index].date = e.target.value; setEntries(newEntries); }} className="bg-background/50 border-white/10" required />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label>{t('Diesel (Quantity) *')}</Label>
+                        <Input type="number" step="0.01" value={entry.litres} onChange={(e) => { const newEntries = [...entries]; newEntries[index].litres = e.target.value; setEntries(newEntries); }} placeholder="0" className="bg-background/50 border-white/10" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('Price *')}</Label>
+                        <Input type="number" step="0.01" value={entry.ratePerLitre} onChange={(e) => { const newEntries = [...entries]; newEntries[index].ratePerLitre = e.target.value; setEntries(newEntries); }} placeholder="0" className="bg-background/50 border-white/10" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('Total')}</Label>
+                        <Input type="number" value={(parseFloat(entry.litres || '0') * parseFloat(entry.ratePerLitre || '0')).toFixed(2)} readOnly className="bg-background/50 border-white/10 font-bold" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('Odometer')}</Label>
+                        <Input type="number" value={entry.odometer} onChange={(e) => { const newEntries = [...entries]; newEntries[index].odometer = e.target.value; setEntries(newEntries); }} placeholder="km" className="bg-background/50 border-white/10" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
 
             <Card className="bg-primary/5 border-primary/20">
@@ -402,7 +438,7 @@ export default function Diesel() {
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}>{t('Cancel')}</Button>
-              <Button type="submit" disabled={createMutation.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90">{t('Log Diesel Entry')}</Button>
+              <Button type="submit" disabled={createMutation.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90">{createMutation.isPending ? t('Saving...') : t('Log Diesel Entries')}</Button>
             </div>
           </form>
         </DialogContent>
@@ -413,7 +449,7 @@ export default function Diesel() {
           <DialogHeader>
             <DialogTitle className="text-red-500">{t('Delete Fuel Log?')}</DialogTitle>
             <DialogDescription>
-              {t('Delete this fuel entry for ')}<strong>{selectedLog?.vehicle?.vehicleNumber}</strong>{t(' on ')}{selectedLog && new Date(selectedLog.date).toLocaleDateString()} ({selectedLog?.litres}L — {formatCurrency(selectedLog?.totalCost || 0)}){t('? Cannot be undone.')}
+              {t('Delete this fuel entry for ')}<strong>{selectedLog?.vehicle?.vehicleNumber}</strong>{t(' on ')}{selectedLog && new Date(selectedLog.date).toLocaleDateString('en-GB')} ({selectedLog?.litres}L — {formatCurrency(selectedLog?.totalCost || 0)}){t('? Cannot be undone.')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

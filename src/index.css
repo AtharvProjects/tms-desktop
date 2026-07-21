@@ -6,9 +6,9 @@
   :root {
     --background: 250 14% 96%;
     --foreground: 240 10% 3.9%;
-    --card: 0 0% 100% / 0.7;
+    --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100% / 0.8;
+    --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
     --primary: 262 83% 58%;
     --primary-foreground: 210 40% 98%;
@@ -29,9 +29,9 @@
   .dark {
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9% / 0.7;
+    --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9% / 0.8;
+    --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
     --primary: 262 83% 58%;
     --primary-foreground: 210 40% 98%;
@@ -55,22 +55,23 @@
   }
   body {
     @apply bg-background text-foreground antialiased text-[16px] lg:text-[17px];
-    background-image: radial-gradient(at 0% 0%, hsla(262,83%,58%,0.15) 0px, transparent 50%),
-                      radial-gradient(at 100% 0%, hsla(280,80%,60%,0.1) 0px, transparent 50%);
+    font-family: 'Inter', sans-serif;
+    /* Clean, non-laggy subtle gradient background */
+    background: linear-gradient(145deg, hsl(var(--background)), hsl(var(--background)));
     background-attachment: fixed;
   }
 }
 
-/* Glassmorphism Utilities */
+/* Solid Premium Aesthetics (No laggy blurs) */
 @layer utilities {
   .glass {
-    @apply bg-card backdrop-blur-xl border border-white/20 shadow-sm dark:border-white/10;
+    @apply bg-card/95 border border-white/10 shadow-sm dark:border-white/5 transition-all duration-200;
   }
   .glass-sidebar {
-    @apply bg-background/60 backdrop-blur-2xl border-r border-white/20 dark:border-white/10;
+    @apply bg-background/95 border-r border-white/10 dark:border-white/5;
   }
   .glass-panel {
-    @apply bg-popover backdrop-blur-2xl border border-white/20 shadow-lg dark:border-white/10;
+    @apply bg-popover/95 border border-white/10 shadow-lg dark:border-white/5;
   }
   .app-region-drag {
     -webkit-app-region: drag;

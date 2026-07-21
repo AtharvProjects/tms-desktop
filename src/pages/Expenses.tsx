@@ -358,7 +358,7 @@ export default function Expenses() {
                       <TableCell className="text-sm">
                         <span className="flex items-center">
                           <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                          {new Date(exp.date).toLocaleDateString()}
+                          {new Date(exp.date).toLocaleDateString('en-GB')}
                         </span>
                       </TableCell>
                       <TableCell className="max-w-xs truncate">{exp.description || t('N/A')}</TableCell>
@@ -409,7 +409,7 @@ export default function Expenses() {
           <DialogHeader>
             <DialogTitle className="text-red-500">{t('Delete Expense?')}</DialogTitle>
             <DialogDescription>
-              {t('Delete this ')}{t(selectedExpense?.category || '')}{t(' entry of ')}<strong>{formatCurrency(selectedExpense?.amount || 0)}</strong>{t(' on ')}{selectedExpense && new Date(selectedExpense.date).toLocaleDateString()}{t('? Cannot be undone.')}
+              {t('Delete this ')}{t(selectedExpense?.category || '')}{t(' entry of ')}<strong>{formatCurrency(selectedExpense?.amount || 0)}</strong>{t(' on ')}{selectedExpense && new Date(selectedExpense.date).toLocaleDateString('en-GB')}{t('? Cannot be undone.')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">

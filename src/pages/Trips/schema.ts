@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const tripSchema = z.object({
   tripNo: z.string().min(1, 'Trip Number is required'),
+  tripName: z.string().nullable().optional(),
   tripDate: z.string().min(1, 'Trip Date is required'),
   vehicleId: z.string().min(1, 'Vehicle is required'),
   partyId: z.string().min(1, 'Party is required'),
@@ -68,6 +69,13 @@ export const tripSchema = z.object({
   dieselEntries: z.array(z.object({
     fuelStation: z.string().nullable().optional(),
     litres: z.coerce.number().min(1, "Litres required"),
+    ratePerLitre: z.coerce.number().min(1, "Rate required"),
+    totalCost: z.coerce.number().min(0),
+    date: z.string()
+  })).default([]),
+  
+  liquidEntries: z.array(z.object({
+    litres: z.coerce.number().min(1, "Quantity required"),
     ratePerLitre: z.coerce.number().min(1, "Rate required"),
     totalCost: z.coerce.number().min(0),
     date: z.string()

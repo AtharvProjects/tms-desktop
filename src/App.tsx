@@ -5,7 +5,14 @@ import { Toaster } from 'sonner'
 import AppLayout from './layouts/AppLayout'
 import { PreferencesProvider } from './contexts/PreferencesContext'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 // Pages
 import Dashboard from './pages/Dashboard'
@@ -18,6 +25,7 @@ import Expenses from './pages/Expenses'
 import Invoices from './pages/Invoices'
 import Settlements from './pages/Settlements'
 import Settings from './pages/Settings'
+import DriverNotes from './pages/DriverNotes'
 
 function App() {
   return (
@@ -37,6 +45,7 @@ function App() {
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/settlements" element={<Settlements />} />
+            <Route path="/driver-notes" element={<DriverNotes />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

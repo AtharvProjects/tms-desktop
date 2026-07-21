@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Plus, Search, Car, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw, MoreVertical, MapPin, Gauge } from 'lucide-react'
+import { Plus, Search, Car, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw, MoreVertical, Gauge } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
@@ -85,7 +85,7 @@ export default function Vehicles() {
     if (!dateStr) return { label: 'N/A', class: 'text-muted-foreground', days: null }
     const days = getDaysRemaining(dateStr)
     if (days === null) return { label: 'N/A', class: 'text-muted-foreground', days: null }
-    const dateLabel = new Date(dateStr).toLocaleDateString()
+    const dateLabel = new Date(dateStr).toLocaleDateString('en-GB')
     if (days < 0) {
       return { label: `${dateLabel}`, subLabel: `Expired ${Math.abs(days)}d ago`, class: 'text-red-500 font-extrabold animate-pulse', days }
     } else if (days <= 15) {
@@ -113,7 +113,6 @@ export default function Vehicles() {
         pollutionExpiry: data.pollutionExpiry ? new Date(data.pollutionExpiry) : null,
         driverId: data.driverId || null,
         capacity: data.capacity || null,
-        currentLocation: data.currentLocation || null,
         notes: data.notes || null,
       }
     }, {
@@ -133,7 +132,6 @@ export default function Vehicles() {
         pollutionExpiry: data.pollutionExpiry ? new Date(data.pollutionExpiry) : null,
         driverId: data.driverId || null,
         capacity: data.capacity || null,
-        currentLocation: data.currentLocation || null,
         notes: data.notes || null,
       }
     }, {
@@ -274,7 +272,6 @@ export default function Vehicles() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col text-sm min-w-[120px]">
-                                <span className="flex items-center text-muted-foreground"><MapPin className="h-3 w-3 mr-1" /> <span className="truncate">{vehicle.currentLocation || t('Base Station')}</span></span>
                                 <span className="flex items-center text-muted-foreground mt-0.5"><Gauge className="h-3 w-3 mr-1" /> {vehicle.currentKms?.toLocaleString() || '0'} km</span>
                               </div>
                             </TableCell>

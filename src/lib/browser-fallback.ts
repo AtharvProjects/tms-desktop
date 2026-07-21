@@ -464,6 +464,10 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
   initDb('dieselLog', defaultDiesel);
   initDb('expense', defaultExpenses);
   initDb('invoice', defaultInvoices);
+  initDb('driverSettlement', []);
+  initDb('driverAdvance', []);
+  initDb('tollEntry', []);
+  initDb('maintenanceEntry', []);
 
   // Helper to read database from localStorage
   const readDb = (key: string): any[] => {
@@ -489,6 +493,15 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       cloned.driver = allDb.driver.find((d: any) => d.id === cloned.driverId);
     } else if (model === 'invoice') {
       cloned.trip = populateRelations('trip', allDb.trip.find((t: any) => t.id === cloned.tripId), allDb);
+    } else if (model === 'driver') {
+      cloned.trips = allDb.trip.filter((t: any) => t.driverId === cloned.id).map((t: any) => ({
+        ...t,
+        tollEntries: allDb.tollEntry?.filter((te: any) => te.tripId === t.id) || [],
+        maintenanceEntries: allDb.maintenanceEntry?.filter((me: any) => me.tripId === t.id) || [],
+        driverAdvances: allDb.driverAdvance?.filter((da: any) => da.tripId === t.id) || [],
+      }));
+      cloned.settlements = allDb.driverSettlement?.filter((s: any) => s.driverId === cloned.id) || [];
+      cloned.advances = allDb.driverAdvance?.filter((a: any) => a.driverId === cloned.id) || [];
     }
     return cloned;
   };
@@ -499,7 +512,7 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
       query: async (model: string, operation: string, args: any = {}) => {
         try {
           const table = readDb(model);
-          const allDb = {
+          const allDb: any = {
             party: readDb('party'),
             driver: readDb('driver'),
             vehicle: readDb('vehicle'),
@@ -507,6 +520,10 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
             dieselLog: readDb('dieselLog'),
             expense: readDb('expense'),
             invoice: readDb('invoice'),
+            driverSettlement: readDb('driverSettlement'),
+            driverAdvance: readDb('driverAdvance'),
+            tollEntry: readDb('tollEntry'),
+            maintenanceEntry: readDb('maintenanceEntry'),
           };
 
           if (operation === 'findMany') {
@@ -696,11 +713,35 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
             writeDb(model, table);
             return { data: updated, error: null };
           } 
-          
           else if (operation === 'count') {
             return { data: table.length, error: null };
           } 
           
+          else if (operation === 'createMany') {
+            if (!args.data || !Array.isArray(args.data)) {
+              return { data: null, error: 'createMany requires data array' };
+            }
+            const newItems = args.data.map((item: any) => {
+              const newItem = {
+                id: Math.random().toString(36).substring(2, 9),
+                ...item,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              if (model === 'dieselLog') {
+                newItem.litres = parseFloat(newItem.litres) || 0;
+                newItem.ratePerLitre = parseFloat(newItem.ratePerLitre) || 0;
+                newItem.totalCost = parseFloat(newItem.totalCost) || 0;
+                newItem.odometer = parseInt(newItem.odometer) || null;
+              }
+              return newItem;
+            });
+
+            table.push(...newItems);
+            writeDb(model, table);
+            return { data: { count: newItems.length }, error: null };
+          }
+
           else if (operation === 'deleteMany') {
             writeDb(model, []);
             return { data: { count: table.length }, error: null };
