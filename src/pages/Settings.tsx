@@ -4,9 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Building, Sun, Moon, Database, Save, CheckCircle2, MessageSquare, QrCode, Smartphone, RefreshCw, Unlink, Check, Download, Upload } from 'lucide-react'
+import { Building, Sun, Moon, Database, Save, CheckCircle2, Download, Upload, Trash2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { usePreferences } from '@/contexts/PreferencesContext'
+import { toast } from 'sonner'
+
+import { WhatsAppStatusCard } from '@/components/whatsapp/WhatsAppStatusCard'
 
 export default function Settings() {
   const { t } = usePreferences();
@@ -35,83 +38,27 @@ export default function Settings() {
   // Alert/Notification State
   const [success, setSuccess] = useState(false)
 
-  // WhatsApp Gateway state
-  const [whatsappConnected, setWhatsappConnected] = useState(false)
-  const [whatsappStatus, setWhatsappStatus] = useState('disconnected')
-  const [qrCode, setQrCode] = useState<string | null>(null)
-  const [isLinking, setIsLinking] = useState(false)
-  const [testSent, setTestSent] = useState(false)
-
-  const handleLinkDevice = () => {
-    setIsLinking(true)
-    setQrCode(null)
-    setWhatsappStatus('loading')
-    if (window.electronAPI?.whatsapp) {
-      window.electronAPI.whatsapp.init()
-    } else {
-      setTimeout(() => {
-        setIsLinking(false)
-        setWhatsappConnected(true)
-        localStorage.setItem('whatsappConnected', 'true')
-      }, 3000)
-    }
-  }
-
-  const handleDisconnectWA = () => {
-    if (window.electronAPI?.whatsapp) {
-      window.electronAPI.whatsapp.disconnect()
-    } else {
-      setWhatsappConnected(false)
-      localStorage.setItem('whatsappConnected', 'false')
-    }
-  }
-
-  const handleSendTestMessage = async () => {
-    setTestSent(true)
-    if (window.electronAPI?.whatsapp) {
-      const testPhone = window.prompt(t("Enter phone number to send test message (with country code, e.g. 919876543210):"))
-      if (testPhone) {
-        try {
-          const res = await window.electronAPI.whatsapp.send(testPhone, t("Hello! This is a test message from your TMS Logistics Pro WhatsApp connection. It is successfully connected!"))
-          if (res && res.error) {
-            alert(t("Error sending test message: ") + res.error)
-          } else {
-            alert(t("Test message sent successfully!"))
-          }
-        } catch (err: any) {
-          alert(t("Failed to send test message: ") + err.message)
-        }
-      }
-    } else {
-      setTimeout(() => {
-        setTestSent(false)
-      }, 3000)
-      return
-    }
-    setTestSent(false)
-  }
-
   const handleBackup = async () => {
     if (!window.electronAPI?.app?.backup) {
-      alert(t("Backup functionality is only available in the desktop application."))
+      toast.error(t("Backup functionality is only available in the desktop application."))
       return
     }
 
     try {
       const res = await window.electronAPI.app.backup()
       if (res.success && res.filePath) {
-        alert(`${t("Backup file saved successfully at:\n")}${res.filePath}`)
+        toast.success(`${t("Backup file saved successfully at: ")}${res.filePath}`)
       } else if (res.error) {
-        alert(`${t("Failed to save backup: ")}${res.error}`)
+        toast.error(`${t("Failed to save backup: ")}${res.error}`)
       }
     } catch (err: any) {
-      alert(`${t("Error creating backup: ")}${err.message}`)
+      toast.error(`${t("Error creating backup: ")}${err.message}`)
     }
   }
 
   const handleRestore = async () => {
     if (!window.electronAPI?.app?.restore) {
-      alert(t("Restore functionality is only available in the desktop application."))
+      toast.error(t("Restore functionality is only available in the desktop application."))
       return
     }
 
@@ -121,13 +68,35 @@ export default function Settings() {
     try {
       const res = await window.electronAPI.app.restore()
       if (res.success) {
-        alert(t("Database successfully restored! The app will now reload."))
-        window.location.reload()
+        toast.success(t("Database successfully restored! The app will now reload."))
+        setTimeout(() => window.location.reload(), 1000)
       } else if (res.error) {
-        alert(`${t("Failed to restore database: ")}${res.error}`)
+        toast.error(`${t("Failed to restore database: ")}${res.error}`)
       }
     } catch (err: any) {
-      alert(`${t("Error restoring database: ")}${err.message}`)
+      toast.error(`${t("Error restoring database: ")}${err.message}`)
+    }
+  }
+
+  const handleResetDatabase = async () => {
+    if (!window.electronAPI?.app?.resetDatabase) {
+      toast.error(t("Database reset is only available in the desktop application."));
+      return;
+    }
+
+    const confirm = window.confirm(t("DANGER: This will permanently delete ALL data (trips, invoices, vehicles, drivers, expenses) and start fresh. Are you absolutely sure you want to delete all data?"));
+    if (!confirm) return;
+
+    try {
+      const res = await window.electronAPI.app.resetDatabase();
+      if (res.success) {
+        toast.success(t("All data deleted successfully! Application will now reload fresh."));
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        toast.error(`${t("Failed to reset database: ")}${res.error}`);
+      }
+    } catch (err: any) {
+      toast.error(`${t("Error resetting database: ")}${err.message}`);
     }
   }
 
@@ -151,62 +120,6 @@ export default function Settings() {
     // Load theme
     const savedTheme = localStorage.getItem('theme') || 'light'
     setTheme(savedTheme)
-
-    // Load WhatsApp connection state
-    if (!window.electronAPI?.whatsapp) {
-      const savedWA = localStorage.getItem('whatsappConnected') === 'true'
-      setWhatsappConnected(savedWA)
-    } else {
-      const checkStatus = async () => {
-        const status = await window.electronAPI.whatsapp!.getStatus()
-        setWhatsappConnected(status === 'connected')
-        if (status === 'connected') {
-          setWhatsappStatus('connected')
-        } else if (status === 'qr_ready' || status === 'loading') {
-          setWhatsappStatus(status)
-          setIsLinking(true)
-          if (status === 'qr_ready') {
-            const qr = await window.electronAPI.whatsapp!.getLastQr()
-            if (qr) setQrCode(qr)
-          }
-        } else {
-          setWhatsappStatus('disconnected')
-        }
-      }
-      
-      checkStatus()
-
-      const unsubQr = window.electronAPI.whatsapp.onQr((qrData) => {
-        setQrCode(qrData)
-        setWhatsappStatus('qr_ready')
-        setIsLinking(true)
-      })
-
-      const unsubStatus = window.electronAPI.whatsapp.onStatus((status) => {
-        setWhatsappStatus(status)
-        if (status === 'connected') {
-          setWhatsappConnected(true)
-          setIsLinking(false)
-          localStorage.setItem('whatsappConnected', 'true')
-        } else if (status === 'disconnected') {
-          setWhatsappConnected(false)
-          setQrCode(null)
-          setIsLinking(false)
-          localStorage.setItem('whatsappConnected', 'false')
-        } else if (status === 'loading') {
-          setIsLinking(true)
-        } else if (status === 'qr_ready') {
-          setIsLinking(true)
-        }
-      })
-
-      window.electronAPI.whatsapp.init()
-
-      return () => {
-        unsubQr()
-        unsubStatus()
-      }
-    }
 
     // Load Database statistics
     async function loadStats() {
@@ -408,152 +321,8 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* WhatsApp Gateway Settings */}
-          <Card className="glass overflow-hidden relative">
-            {/* Inline animation styles for scanning line */}
-            <style>{`
-              @keyframes scan {
-                0% { top: 5%; }
-                50% { top: 90%; }
-                100% { top: 5%; }
-              }
-            `}</style>
-            
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div className="flex items-center space-x-2">
-                <MessageSquare className="h-5 w-5 text-emerald-500" />
-                <CardTitle className="text-lg font-bold">{t('WhatsApp Gateway Link')}</CardTitle>
-              </div>
-              <Badge 
-                variant="outline" 
-                className={
-                  whatsappConnected 
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold" 
-                    : whatsappStatus === 'loading'
-                      ? "bg-amber-500/10 border-amber-500/20 text-amber-500 font-bold"
-                      : "bg-orange-500/10 border-orange-500/20 text-orange-500 font-bold"
-                }
-              >
-                {whatsappConnected ? t("Connected") : whatsappStatus === 'loading' ? t("Starting...") : t("Disconnected")}
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {whatsappConnected ? (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4">
-                    <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 flex-shrink-0">
-                      <Smartphone className="h-6 w-6" />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <p className="font-bold text-slate-800 dark:text-slate-200">{t('Device Linked Successfully')}</p>
-                      <p className="text-xs text-muted-foreground">{t('Active for Invoice sharing & Payment reminders')}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={handleSendTestMessage}
-                      className="flex-1 h-12 font-semibold border-white/10 hover:bg-white/5 rounded-xl text-foreground flex items-center justify-center gap-2"
-                    >
-                      {testSent ? (
-                        <>
-                          <Check className="h-4 w-4 text-emerald-500 animate-bounce" />
-                          {t('Test Sent!')}
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="h-4 w-4" />
-                          {t('Send Test Message')}
-                        </>
-                      )}
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="destructive"
-                      onClick={handleDisconnectWA}
-                      className="flex-1 h-12 font-semibold bg-red-500 hover:bg-red-600 text-white rounded-xl flex items-center justify-center gap-2"
-                    >
-                      <Unlink className="h-4 w-4" />
-                      {t('Disconnect Phone')}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-6 items-center">
-                  <div className="space-y-3 text-sm">
-                    <p className="text-muted-foreground">
-                      {t('Link your WhatsApp account to enable direct invoice sending and automated outstanding balance alerts.')}
-                    </p>
-                    <ol className="list-decimal pl-4 space-y-2 text-xs text-muted-foreground">
-                      <li>{t('Open WhatsApp on your phone')}</li>
-                      <li>{t('Tap ')}<strong>{t('Settings / Linked Devices')}</strong></li>
-                      <li>{t('Tap ')}<strong>{t('Link a Device')}</strong>{t(' and point your camera to this screen')}</li>
-                    </ol>
-                    <div className="pt-2 flex flex-col gap-2">
-                      <Button 
-                        type="button"
-                        onClick={handleLinkDevice}
-                        disabled={isLinking}
-                        className="w-full h-12 font-bold bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        {isLinking ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                            {whatsappStatus === 'qr_ready' ? t('Waiting for Scan...') : t('Starting Client...')}
-                          </>
-                        ) : (
-                          <>
-                            <QrCode className="h-4 w-4" />
-                            {t('Link Phone / Show QR Code')}
-                          </>
-                        )}
-                      </Button>
-                      
-                      {isLinking && whatsappStatus === 'loading' && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={handleDisconnectWA}
-                          className="w-full h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                        >
-                          {t('Cancel / Reset if stuck')}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                   <div className="flex flex-col items-center justify-center border border-white/10 bg-white/5 rounded-2xl p-4 relative overflow-hidden group min-h-[220px]">
-                    {/* Glowing green scanning laser line */}
-                    {isLinking && whatsappStatus !== 'qr_ready' && (
-                      <div className="absolute left-0 w-full h-0.5 bg-emerald-500 shadow-[0_0_8px_#10b981] z-10 animate-[scan_2s_ease-in-out_infinite]" />
-                    )}
-                    {qrCode ? (
-                      <img 
-                        src={qrCode} 
-                        alt="WhatsApp QR Code Link" 
-                        className="h-40 w-40 object-contain rounded-lg transition-all duration-300 bg-white p-1"
-                      />
-                    ) : (
-                      <div className="h-40 w-40 flex flex-col items-center justify-center text-muted-foreground/50 border-2 border-dashed border-white/10 rounded-xl">
-                        <QrCode className="h-10 w-10 mb-2 opacity-50" />
-                        <span className="text-xs font-medium">{t('QR Area')}</span>
-                      </div>
-                    )}
-                    <span className="text-[10px] text-muted-foreground mt-3 font-mono uppercase tracking-wider text-center">
-                      {isLinking && !qrCode ? t("Starting WhatsApp engine...\n(This can take 10-30s)") : qrCode ? t("Scan QR Code to Link") : t("Click 'Link Phone' to generate QR")}
-                    </span>
-                    {(!window.electronAPI || !window.electronAPI.app) && (
-                      <div className="mt-3 p-2.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 rounded-xl text-[11px] text-center max-w-[190px] font-medium leading-normal">
-                        {t("⚠️ Browser Preview Mode: Scanning this mock QR will not link. Please open the Desktop App window.")}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Professional WhatsApp Gateway Status Card */}
+          <WhatsAppStatusCard />
         </div>
 
         {/* Right Column: Database / System Info */}
@@ -650,6 +419,17 @@ export default function Settings() {
                   <Upload className="h-4 w-4 text-emerald-400" />
                   {t('Restore Database')}
                 </Button>
+                <div className="pt-2 border-t border-border mt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleResetDatabase}
+                    className="w-full h-11 border-red-500/30 text-red-500 hover:bg-red-500/10 font-semibold rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                    {t('Delete All Data (Fresh Clean Start)')}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

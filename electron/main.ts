@@ -2,10 +2,8 @@ import { app, BrowserWindow, ipcMain, shell, session, dialog } from 'electron'
 import path from 'path'
 import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
-import QRCode from 'qrcode'
-import pkg from 'whatsapp-web.js'
 import { fileURLToPath } from 'url'
-const { Client, LocalAuth, MessageMedia } = pkg
+import { WhatsAppConnectionManager } from './whatsapp'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -58,101 +56,14 @@ function errorToFile(...args: any[]) {
   fs.appendFileSync(logPath, msg);
 }
 
-// IPC Handler for backup
-ipcMain.handle('app:backup', async (event) => {
-  const window = BrowserWindow.fromWebContents(event.sender);
-  if (!window) return { success: false, error: "No window context found." };
-
-  try {
-    let dbPath = '';
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:')) {
-      const relativePath = process.env.DATABASE_URL.replace('file:', '');
-      dbPath = path.resolve(relativePath);
-    } else {
-      dbPath = path.join(app.getPath('userData'), 'tms-database.db');
-    }
-
-    if (!fs.existsSync(dbPath)) {
-      return { success: false, error: `Active database file not found at: ${dbPath}` };
-    }
-
-    const { filePath, canceled } = await dialog.showSaveDialog(window, {
-      title: 'Export Database Backup',
-      defaultPath: path.join(app.getPath('downloads'), 'tms_backup.db'),
-      filters: [
-        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
-      ]
-    });
-
-    if (canceled || !filePath) {
-      return { success: false, error: null };
-    }
-
-    fs.copyFileSync(dbPath, filePath);
-    logToFile(`[Main] Database backup successfully exported to: ${filePath}`);
-    return { success: true, filePath };
-  } catch (error: any) {
-    errorToFile('[Main] Database backup failed:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// IPC Handler for restore
-ipcMain.handle('app:restore', async (event) => {
-  const window = BrowserWindow.fromWebContents(event.sender);
-  if (!window) return { success: false, error: "No window context found." };
-
-  try {
-    let dbPath = '';
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:')) {
-      const relativePath = process.env.DATABASE_URL.replace('file:', '');
-      dbPath = path.resolve(relativePath);
-    } else {
-      dbPath = path.join(app.getPath('userData'), 'tms-database.db');
-    }
-
-    const { filePaths, canceled } = await dialog.showOpenDialog(window, {
-      title: 'Select Backup Database File',
-      properties: ['openFile'],
-      filters: [
-        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
-      ]
-    });
-
-    if (canceled || !filePaths || filePaths.length === 0) {
-      return { success: false, error: null };
-    }
-
-    const backupFilePath = filePaths[0];
-
-    // Disconnect Prisma
-    await prisma.$disconnect();
-
-    // Copy backup file
-    fs.copyFileSync(backupFilePath, dbPath);
-    logToFile(`[Main] Database successfully restored from: ${backupFilePath}`);
-
-    // Re-connect
-    await prisma.$connect();
-
-    return { success: true };
-  } catch (error: any) {
-    errorToFile('[Main] Database restore failed:', error);
-    try {
-      await prisma.$connect();
-    } catch (e) {}
-    return { success: false, error: error.message };
-  }
-});
-
-// Initialize Prisma DB file
+// Initialize Prisma DB file path in writeable userData directory
 const userDbPath = path.join(app.getPath('userData'), 'tms-database.db');
 if (!fs.existsSync(userDbPath)) {
-  // Try the packaged resources path first, then fall back to dev path
   const candidates = [
     path.join(process.resourcesPath, 'app', 'prisma', 'dev.db'),
     path.join(process.resourcesPath, 'prisma', 'dev.db'),
-    path.join(__dirname, '../prisma/dev.db')
+    path.join(__dirname, '../prisma/dev.db'),
+    path.join(process.cwd(), 'prisma', 'dev.db')
   ];
   
   let templateDbPath = '';
@@ -171,12 +82,91 @@ if (!fs.existsSync(userDbPath)) {
   }
 }
 
+// Active database in Electron is ALWAYS userDbPath
+process.env.DATABASE_URL = `file:${userDbPath.replace(/\\/g, '/')}`;
+logToFile('[Main] Set DATABASE_URL to:', process.env.DATABASE_URL);
 
-// Set DATABASE_URL BEFORE initializing PrismaClient
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = `file:${userDbPath.replace(/\\/g, '/')}`;
-  logToFile('[Main] Set DATABASE_URL to:', process.env.DATABASE_URL);
-}
+// IPC Handler for backup
+ipcMain.handle('app:backup', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return { success: false, error: "No window context found." };
+
+  try {
+    if (!fs.existsSync(userDbPath)) {
+      return { success: false, error: `Active database file not found at: ${userDbPath}` };
+    }
+
+    const { filePath, canceled } = await dialog.showSaveDialog(window, {
+      title: 'Export Database Backup',
+      defaultPath: path.join(app.getPath('downloads'), 'tms_backup.db'),
+      filters: [
+        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
+      ]
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, error: null };
+    }
+
+    fs.copyFileSync(userDbPath, filePath);
+    logToFile(`[Main] Database backup successfully exported to: ${filePath}`);
+    return { success: true, filePath };
+  } catch (error: any) {
+    errorToFile('[Main] Database backup failed:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC Handler for restore
+ipcMain.handle('app:restore', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return { success: false, error: "No window context found." };
+
+  try {
+    const { filePaths, canceled } = await dialog.showOpenDialog(window, {
+      title: 'Select Backup Database File',
+      properties: ['openFile'],
+      filters: [
+        { name: 'SQLite Database', extensions: ['db', 'sqlite'] }
+      ]
+    });
+
+    if (canceled || !filePaths || filePaths.length === 0) {
+      return { success: false, error: null };
+    }
+
+    const backupFilePath = filePaths[0];
+
+    // Ensure target folder exists
+    const targetDir = path.dirname(userDbPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    // Disconnect Prisma
+    await prisma.$disconnect();
+
+    // Remove any leftover WAL / SHM files
+    try { if (fs.existsSync(userDbPath + '-wal')) fs.unlinkSync(userDbPath + '-wal'); } catch (e) {}
+    try { if (fs.existsSync(userDbPath + '-shm')) fs.unlinkSync(userDbPath + '-shm'); } catch (e) {}
+
+    // Copy backup file directly into active userDbPath
+    fs.copyFileSync(backupFilePath, userDbPath);
+    logToFile(`[Main] Database successfully restored from: ${backupFilePath} to: ${userDbPath}`);
+
+    // Re-connect and ensure schemas
+    await prisma.$connect();
+    await ensureDbSchema();
+
+    return { success: true };
+  } catch (error: any) {
+    errorToFile('[Main] Database restore failed:', error);
+    try {
+      await prisma.$connect();
+    } catch (e) {}
+    return { success: false, error: error.message };
+  }
+});
 
 // When packaged, also set the engine path relative to resources
 if (isPkg) {
@@ -255,8 +245,58 @@ async function createWindow() {
   }
 }
 
+async function ensureDbSchema() {
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Invoice" ADD COLUMN "commissionAmount" REAL DEFAULT 0;`);
+  } catch (e) {}
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Invoice" ADD COLUMN "gstPercentage" REAL DEFAULT 0;`);
+  } catch (e) {}
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Invoice" ADD COLUMN "notes" TEXT;`);
+  } catch (e) {}
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "DieselLog" ADD COLUMN "vehicleId" TEXT;`);
+  } catch (e) {}
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "WhatsAppLog" (
+        "id" TEXT PRIMARY KEY,
+        "recipient" TEXT NOT NULL,
+        "phone" TEXT NOT NULL,
+        "messageType" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "attachment" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'Sent',
+        "error" TEXT,
+        "relatedId" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  } catch (e) {}
+}
+
+let whatsappManager: WhatsAppConnectionManager;
+
 app.commandLine.appendSwitch('lang', 'en-GB');
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  await ensureDbSchema();
+  whatsappManager = new WhatsAppConnectionManager(
+    () => mainWindow,
+    prisma,
+    logToFile,
+    errorToFile
+  );
+  createWindow();
+
+  // Auto-restore session if previously linked and active
+  if (whatsappManager.hasStoredSession()) {
+    logToFile('[Main] Stored WhatsApp session detected. Auto-restoring in background...');
+    whatsappManager.initialize().catch(err => {
+      logToFile('[Main] Auto-restore session error:', err);
+    });
+  }
+});
 
 app.on('window-all-closed', async () => {
   await prisma.$disconnect()
@@ -274,14 +314,75 @@ app.on('activate', () => {
 // IPC Handler for Prisma
 ipcMain.handle('prisma:query', async (_, { model, operation, args }) => {
   try {
+    // Special resilient handling for invoice create
+    if (model === 'invoice' && operation === 'create' && args?.data) {
+      if (!args.data.tripId || args.data.tripId === 'none' || args.data.tripId === '') {
+        delete args.data.tripId;
+      }
+      ['subtotal', 'gstAmount', 'gstPercentage', 'shortageAmount', 'damageAmount', 'commissionAmount', 'totalAmount', 'amountPaid'].forEach(field => {
+        if (args.data[field] !== undefined) {
+          args.data[field] = Number(args.data[field]) || 0;
+        }
+      });
+      if (!args.data.invoiceNumber || String(args.data.invoiceNumber).trim() === '') {
+        args.data.invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+      }
+    }
+
     // @ts-ignore - dynamic model access
     const result = await prisma[model][operation](args)
     return { data: result, error: null }
   } catch (error: any) {
     console.error(`Prisma Error [${model}.${operation}]:`, error)
+
+    // Resilient fallback for invoice create if unique constraint or error occurs
+    if (model === 'invoice' && operation === 'create') {
+      try {
+        const fallbackNo = `${args?.data?.invoiceNumber || 'INV'}-${Math.floor(1000 + Math.random() * 9000)}`;
+        logToFile('[Main] Retrying invoice creation with unique fallback number:', fallbackNo);
+        const retryArgs = {
+          ...args,
+          data: {
+            ...args.data,
+            invoiceNumber: fallbackNo
+          }
+        };
+        // @ts-ignore
+        const retryResult = await prisma.invoice.create(retryArgs);
+        return { data: retryResult, error: null };
+      } catch (retryError: any) {
+        errorToFile('[Main] Retry invoice creation failed:', retryError);
+      }
+    }
+
     return { data: null, error: error.message }
   }
 })
+
+// IPC Handler to completely reset all data
+ipcMain.handle('app:resetDatabase', async () => {
+  try {
+    const tableNames = [
+      'TripLink', 'LiquidEntry', 'StandaloneDriverLedger', 'MaintenanceEntry', 'TollEntry',
+      'DriverSettlement', 'DriverChangeHistory', 'DriverAdvance', 'DirectDriver',
+      'PartyLedger', 'DriverLedger', 'MaintenanceLog', 'Invoice', 'Expense',
+      'DieselLog', 'Trip', 'Vehicle', 'Driver', 'Party'
+    ];
+    for (const table of tableNames) {
+      try {
+        await prisma.$executeRawUnsafe(`DELETE FROM "${table}";`);
+      } catch (e) {}
+    }
+    try {
+      await prisma.$executeRawUnsafe(`VACUUM;`);
+    } catch (e) {}
+    logToFile('[Main] All database tables successfully cleared and vacuumed');
+    return { success: true };
+  } catch (error: any) {
+    errorToFile('[Main] Database reset failed:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 ipcMain.handle('app:path', (_, name: 'userData' | 'documents' | 'downloads') => {
   return app.getPath(name)
@@ -303,231 +404,27 @@ ipcMain.handle('app:saveImage', async (_, { base64Data, filename, subfolder = 'd
   }
 })
 
-// --- WhatsApp Integration (whatsapp-web.js) ---
-let whatsappClient: Client | null = null;
-let whatsappStatus = 'disconnected'; // 'disconnected', 'loading', 'qr_ready', 'connected'
-let lastQrDataUrl = '';
-
-function getClient(): Client {
-  if (!whatsappClient) {
-    // Determine where to store session data
-    const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
-    logToFile('[Main] Creating WhatsApp Client instance at auth path:', authPath);
-    
-    // Determine Puppeteer executable path
-    let puppeteerExecPath: string | undefined = undefined;
-    const possiblePaths = [
-      // Windows - system Chrome/Edge (highly reliable fallback)
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    ];
-
-    if (isPkg) {
-      // Packaged app paths
-      possiblePaths.unshift(
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'puppeteer-core', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'whatsapp-web.js', 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        path.join(process.resourcesPath, 'node_modules', 'puppeteer', '.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe')
-      );
-    } else {
-      // Dev paths (node_modules)
-      possiblePaths.unshift(
-        path.join(__dirname, '../node_modules/puppeteer/.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe'),
-        path.join(__dirname, '../node_modules/whatsapp-web.js/node_modules/puppeteer/.local-chromium', 'win64-' + process.arch, 'chrome-win', 'chrome.exe')
-      );
-    }
-
-    puppeteerExecPath = possiblePaths.find(p => fs.existsSync(p));
-    
-    if (puppeteerExecPath) {
-      logToFile('[Main] Found Puppeteer Chromium/Browser at:', puppeteerExecPath);
-    } else {
-      logToFile('[Main] WARNING: Could not find any suitable browser executable. WhatsApp may fail to start.');
-    }
-
-    whatsappClient = new Client({
-      authStrategy: new LocalAuth({
-        dataPath: authPath
-      }),
-      webVersionCache: {
-        type: 'none',
-      },
-      puppeteer: {
-        headless: true,
-        ...(puppeteerExecPath ? { executablePath: puppeteerExecPath } : {}),
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-        ]
-      }
-    });
-
-    whatsappClient.on('qr', async (qr) => {
-      logToFile('[Main] WhatsApp Client QR Code event fired!');
-      whatsappStatus = 'qr_ready';
-      try {
-        const qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 5 });
-        lastQrDataUrl = qrDataUrl;
-        mainWindow?.webContents.send('whatsapp:qr', qrDataUrl);
-        mainWindow?.webContents.send('whatsapp:status', 'qr_ready');
-        logToFile('[Main] Sent whatsapp:qr to renderer.');
-      } catch (err) {
-        errorToFile('[Main] Failed to generate QR code data URL', err);
-      }
-    });
-
-    whatsappClient.on('ready', () => {
-      whatsappStatus = 'connected';
-      lastQrDataUrl = '';
-      mainWindow?.webContents.send('whatsapp:status', 'connected');
-      logToFile('[Main] WhatsApp Client is ready!');
-    });
-
-    whatsappClient.on('authenticated', () => {
-      logToFile('[Main] WhatsApp Authenticated!');
-    });
-
-    whatsappClient.on('auth_failure', msg => {
-      errorToFile('[Main] WhatsApp Auth failure', msg);
-      whatsappStatus = 'disconnected';
-      lastQrDataUrl = '';
-      mainWindow?.webContents.send('whatsapp:status', 'disconnected');
-    });
-
-    whatsappClient.on('disconnected', (reason) => {
-      logToFile('[Main] WhatsApp Client was logged out', reason);
-      whatsappStatus = 'disconnected';
-      lastQrDataUrl = '';
-      mainWindow?.webContents.send('whatsapp:status', 'disconnected');
-      whatsappClient = null;
-    });
-  }
-  return whatsappClient;
-}
-
-ipcMain.handle('whatsapp:init', async () => {
-  logToFile('[Main] whatsapp:init called. Current status:', whatsappStatus);
-  
-  if (whatsappStatus === 'qr_ready' && lastQrDataUrl) {
-    logToFile('[Main] Re-sending stored QR code URL to renderer.');
-    mainWindow?.webContents.send('whatsapp:qr', lastQrDataUrl);
-    mainWindow?.webContents.send('whatsapp:status', 'qr_ready');
-    return;
-  }
-  
-  if (whatsappStatus === 'connected' || whatsappStatus === 'loading') {
-    return;
-  }
-  
-  whatsappStatus = 'loading';
-  mainWindow?.webContents.send('whatsapp:status', 'loading');
-  
-  try {
-    const client = getClient();
-    logToFile('[Main] Calling client.initialize()...');
-    await client.initialize();
-    logToFile('[Main] client.initialize() returned.');
-  } catch (error) {
-    errorToFile('[Main] Failed to init whatsapp client:', error);
-    whatsappStatus = 'disconnected';
-    lastQrDataUrl = '';
-    mainWindow?.webContents.send('whatsapp:status', 'disconnected');
-  }
+// --- WhatsApp Integration (Delegated to WhatsAppConnectionManager) ---
+ipcMain.handle('whatsapp:init', async (_, forceFresh?: boolean) => {
+  return await whatsappManager.initialize(forceFresh);
 });
 
 ipcMain.handle('whatsapp:status', () => {
-  return whatsappStatus;
-});
-
-ipcMain.handle('whatsapp:lastQr', () => {
-  return lastQrDataUrl;
+  return whatsappManager.getStatusPayload();
 });
 
 ipcMain.handle('whatsapp:disconnect', async () => {
-  logToFile('[Main] whatsapp:disconnect called.');
-  if (whatsappClient) {
-    try {
-      logToFile('[Main] Logging out whatsapp client...');
-      await whatsappClient.logout();
-    } catch (e) {
-      console.error('Logout error', e);
-      logToFile('[Main] Logout error:', e);
-    }
-    try {
-      logToFile('[Main] Destroying whatsapp client...');
-      await whatsappClient.destroy();
-    } catch (e) {
-      console.error('Destroy error', e);
-      logToFile('[Main] Destroy error:', e);
-    }
-    whatsappClient = null;
-  }
-  
-  // Clear auth directory to force fresh QR next time
-  const authPath = path.join(app.getPath('userData'), '.wwebjs_auth');
-  try {
-    if (fs.existsSync(authPath)) {
-      fs.rmSync(authPath, { recursive: true, force: true });
-      logToFile('[Main] Deleted .wwebjs_auth folder.');
-    }
-  } catch (err) {
-    logToFile('[Main] Failed to delete .wwebjs_auth folder:', err);
-  }
-
-  whatsappStatus = 'disconnected';
-  lastQrDataUrl = '';
-  mainWindow?.webContents.send('whatsapp:status', 'disconnected');
+  return await whatsappManager.disconnect();
 });
 
-function formatPhoneToId(phone: string) {
-  let cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length === 10) {
-    cleanPhone = '91' + cleanPhone;
-  }
-  return `${cleanPhone}@c.us`;
-}
-
-ipcMain.handle('whatsapp:send', async (_, { phone, text }) => {
-  if (!whatsappClient || whatsappStatus !== 'connected') {
-    return { success: false, error: "WhatsApp is not connected." };
-  }
-
-  try {
-    const chatId = formatPhoneToId(phone);
-    await whatsappClient.sendMessage(chatId, text);
-    return { success: true };
-  } catch (err: any) {
-    console.error('WhatsApp send error:', err);
-    return { success: false, error: err.message };
-  }
+ipcMain.handle('whatsapp:send', async (_, params: { phone: string; text: string; recipientName?: string; messageType?: string; relatedId?: string }) => {
+  return await whatsappManager.sendMessage(params);
 });
 
-ipcMain.handle('whatsapp:sendMedia', async (_, { phone, caption, base64Data, mimetype, filename }) => {
-  if (!whatsappClient || whatsappStatus !== 'connected') {
-    return { success: false, error: "WhatsApp is not connected." };
-  }
-
-  try {
-    const chatId = formatPhoneToId(phone);
-    // Remove data URL prefix if present
-    const base64Str = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data;
-    
-    const media = new MessageMedia(mimetype, base64Str, filename);
-    const sendOptions: any = { caption };
-    if (!mimetype.startsWith('image/') && !mimetype.startsWith('video/')) {
-      sendOptions.sendMediaAsDocument = true;
-    }
-    await whatsappClient.sendMessage(chatId, media, sendOptions);
-    return { success: true };
-  } catch (err: any) {
-    console.error('WhatsApp sendMedia error:', err);
-    return { success: false, error: err.message };
-  }
+ipcMain.handle('whatsapp:sendMedia', async (_, params: { phone: string; caption?: string; base64Data: string; mimetype: string; filename: string; recipientName?: string; messageType?: string; relatedId?: string }) => {
+  return await whatsappManager.sendMedia(params);
 });
+
 
 // --- PDF Generation ---
 ipcMain.handle('app:printToPdf', async (_, htmlContent: string) => {

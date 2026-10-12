@@ -14,17 +14,17 @@ model Trip {
   tripName         String?
   tripDate         DateTime @default(now())
   
-  vehicleId        String
-  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicleId        String?
+  vehicle          Vehicle?  @relation(fields: [vehicleId], references: [id])
   
-  partyId          String
-  party            Party    @relation(fields: [partyId], references: [id])
+  partyId          String?
+  party            Party?    @relation(fields: [partyId], references: [id])
   
   driverId         String?
   driver           Driver?  @relation(fields: [driverId], references: [id])
 
-  from             String
-  to               String
+  from             String?
+  to               String?
   material         String?
   sizeWeight       String?
   
@@ -53,9 +53,9 @@ model Trip {
   detentionTime    String?
   holdingDays      Int      @default(0)
   
-  status           String   @default("Scheduled") // Scheduled, Loading, In Transit, Unloading, Completed
-  podStatus        String   @default("Pending") // Pending, Received, Submitted
-  paymentStatus    String   @default("Pending") // Pending, Partial, Paid
+  status           String   @default("Draft") // Draft, Scheduled, Loading, In Transit, Unloading, Completed, Cancelled
+  podStatus        String   @default("Pending") // Pending, Received, Submitted, Verified
+  paymentStatus    String   @default("Pending") // Pending, Partial, Paid, Overdue
   
   route            String?
   notes            String?
@@ -148,8 +148,8 @@ model Party {
 
 model DieselLog {
   id               String   @id @default(uuid())
-  vehicleId        String
-  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicleId        String?
+  vehicle          Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   
   tripId           String?
   trip             Trip?    @relation(fields: [tripId], references: [id], onDelete: Cascade)
@@ -183,17 +183,20 @@ model Invoice {
   invoiceNumber    String   @unique
   date             DateTime @default(now())
   
-  tripId           String
-  trip             Trip     @relation(fields: [tripId], references: [id])
+  tripId           String?
+  trip             Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
   
-  subtotal         Float
+  subtotal         Float    @default(0)
+  gstPercentage    Float    @default(0)
   gstAmount        Float    @default(0)
   shortageAmount   Float    @default(0)
   damageAmount     Float    @default(0)
-  totalAmount      Float
+  commissionAmount Float    @default(0)
+  totalAmount      Float    @default(0)
   
   amountPaid       Float    @default(0)
   status           String   @default("Unpaid") // Unpaid, Partial, Paid
+  notes            String?
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -202,7 +205,7 @@ model Invoice {
 model MaintenanceLog {
   id               String   @id @default(uuid())
   vehicleId        String
-  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicle          Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   
   date             DateTime @default(now())
   type             String   // Tyre, Oil, Repair, Spares, Other
@@ -218,7 +221,7 @@ model MaintenanceLog {
 model DriverLedger {
   id               String   @id @default(uuid())
   driverId         String
-  driver           Driver   @relation(fields: [driverId], references: [id])
+  driver           Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   
   date             DateTime @default(now())
   type             String   // Advance, Expense, Salary, Settlement, Personal
@@ -233,7 +236,7 @@ model DriverLedger {
 model PartyLedger {
   id               String   @id @default(uuid())
   partyId          String
-  party            Party    @relation(fields: [partyId], references: [id])
+  party            Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
   
   date             DateTime @default(now())
   type             String   // Invoice, Payment, Adjustment
@@ -344,3 +347,15 @@ model LiquidEntry {
   createdAt DateTime @default(now())
 }
 
+model WhatsAppLog {
+  id          String   @id @default(uuid())
+  recipient   String
+  phone       String
+  messageType String   // Invoice, Payment Reminder, Customer Balance, Trip Update, Driver Assignment, Settlement, Test, Custom
+  message     String
+  attachment  String?  // filename e.g. INV-2001.pdf
+  status      String   @default("Sent") // Sent, Failed
+  error       String?
+  relatedId   String?  // invoiceId, tripId, partyId, driverId
+  createdAt   DateTime @default(now())
+}

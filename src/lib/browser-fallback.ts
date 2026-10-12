@@ -768,43 +768,43 @@ if (typeof window !== 'undefined' && !window.electronAPI) {
         console.log("Mock restore database");
         alert("Database Restore is only available when running inside the native Desktop App.");
         return { success: false, error: "Not supported in web browser preview." };
+      },
+      resetDatabase: async () => {
+        ['party', 'driver', 'vehicle', 'trip', 'dieselLog', 'expense', 'invoice', 'driverSettlement', 'driverAdvance', 'tollEntry', 'maintenanceEntry', 'liquidEntry', 'tripLink'].forEach(k => {
+          localStorage.removeItem(`tms_db_${k}`);
+        });
+        return { success: true, error: null };
       }
     },
     getPath: async (name: string) => {
       return `/mock-user-path/${name}`;
     },
     whatsapp: (() => {
-      let qrListener: ((qr: string) => void) | null = null;
-      let statusListener: ((status: string) => void) | null = null;
+      let statusListener: ((payload: any) => void) | null = null;
+      const getPayload = () => ({
+        status: 'DISCONNECTED' as const,
+        accountInfo: null,
+        qrDataUrl: null,
+        qrExpiresAt: null,
+        isQrExpired: false,
+        error: 'WhatsApp engine operates inside the JTT Desktop Electron App.'
+      });
+
       return {
         init: async () => {
-          console.log('Mock WhatsApp init');
-          if (statusListener) statusListener('loading');
-          
-          setTimeout(() => {
-            if (qrListener) qrListener('/whatsapp-qr.png');
-            if (statusListener) statusListener('qr_ready');
-          }, 1500);
+          const payload = getPayload();
+          if (statusListener) statusListener(payload);
+          return payload;
         },
-        getStatus: async () => 'disconnected',
-        getLastQr: async () => '/whatsapp-qr.png',
-        send: async (phone: string, text: string) => {
-          console.log(`Mock WhatsApp send to ${phone}: ${text}`);
-          return { success: true, error: null };
-        },
-        sendMedia: async (args: { phone: string, caption?: string, base64Data: string, mimetype: string, filename: string }) => {
-          console.log(`Mock WhatsApp sendMedia to ${args.phone} (${args.filename}, ${args.mimetype}): ${args.caption}`);
-          return { success: true, error: null };
-        },
+        getStatus: async () => getPayload(),
         disconnect: async () => {
-          console.log('Mock WhatsApp disconnect');
-          if (statusListener) statusListener('disconnected');
+          const payload = getPayload();
+          if (statusListener) statusListener(payload);
+          return payload;
         },
-        onQr: (_callback: (qr: string) => void) => {
-          qrListener = _callback;
-          return () => { qrListener = null; };
-        },
-        onStatus: (_callback: (status: string) => void) => {
+        send: async () => ({ success: false, error: 'WhatsApp is only available in the desktop application.' }),
+        sendMedia: async () => ({ success: false, error: 'WhatsApp is only available in the desktop application.' }),
+        onStatus: (_callback: (payload: any) => void) => {
           statusListener = _callback;
           return () => { statusListener = null; };
         }

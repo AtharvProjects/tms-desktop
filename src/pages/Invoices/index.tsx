@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, FileText, MessageSquare, IndianRupee, Printer, Calendar, ShieldCheck, Trash2, Filter, RefreshCw, CheckCircle } from 'lucide-react';
+import { Plus, Search, FileText, IndianRupee, Printer, Calendar, ShieldCheck, Trash2, Filter, RefreshCw, CheckCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -21,12 +22,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
-import { generatePdf, sendWhatsAppPdf } from '@/lib/services';
+import { generatePdf, generatePdfBase64 } from '@/lib/services';
 import { formatCurrency } from '@/lib/utils';
 import { InvoiceForm } from './InvoiceForm';
 import type { InvoiceFormValues } from './schema';
 import type { Invoice, Trip, Party, Vehicle } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
+import { WhatsAppMessageComposer } from '@/components/whatsapp/WhatsAppMessageComposer';
+import type { WhatsAppAttachment, TemplateType } from '@/components/whatsapp/WhatsAppMessageComposer';
 
 type TripWithRelations = Trip & { party: Party | null, vehicle: Vehicle | null };
 type InvoiceWithRelations = Invoice & { trip: TripWithRelations | null };
@@ -43,8 +47,22 @@ export default function Invoices() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
-  const [isSendingWA, setIsSendingWA] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // WhatsApp Composer State
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerProps, setComposerProps] = useState<{
+    recipientName: string;
+    phone: string;
+    defaultTemplate: TemplateType;
+    invoiceData?: any;
+    attachment?: WhatsAppAttachment | null;
+    relatedId?: string;
+  }>({
+    recipientName: '',
+    phone: '',
+    defaultTemplate: 'Invoice'
+  });
 
   // System Config
   const systemCompanyName = localStorage.getItem('companyName') !== null ? localStorage.getItem('companyName') : 'TMS Logistics Pro';
@@ -63,10 +81,10 @@ export default function Invoices() {
   );
 
   const { data: allTrips = [] } = usePrismaQuery<TripWithRelations[]>(
-    ['trips', 'completed'],
+    ['trips', 'for-invoice'],
     'trip',
     'findMany',
-    { where: { podStatus: { in: ['Received', 'Submitted'] } }, include: { party: true, vehicle: true }, orderBy: { tripNo: 'desc' } }
+    { where: { status: { not: 'Cancelled' } }, include: { party: true, vehicle: true }, orderBy: { tripNo: 'desc' } }
   );
 
   const existingTripIds = invoices.map(i => i.tripId);
@@ -91,33 +109,86 @@ export default function Invoices() {
   };
 
   const handleCreateInvoice = async (data: InvoiceFormValues, calculatedSubtotal: number, calculatedGst: number, calculatedTotal: number) => {
-    const { gstPercentage, ...restData } = data;
-    createMutation.mutate({
-      data: {
-        ...restData,
-        date: new Date(data.date),
-        subtotal: calculatedSubtotal,
-        gstAmount: calculatedGst,
-        totalAmount: calculatedTotal,
+    const tripId = data.tripId && data.tripId !== 'none' ? data.tripId : null;
+    let invNo = data.invoiceNumber?.trim() || generateNextInvoiceNo();
+    
+    let invDate = new Date();
+    if (data.date) {
+      const parsed = new Date(data.date);
+      if (!isNaN(parsed.getTime())) {
+        invDate = parsed;
       }
+    }
+
+    const payload: any = {
+      invoiceNumber: invNo,
+      date: invDate,
+      tripId: tripId,
+      subtotal: Math.max(0, Number(calculatedSubtotal) || 0),
+      gstPercentage: Math.max(0, Number(data.gstPercentage) || 0),
+      gstAmount: Math.max(0, Number(calculatedGst) || 0),
+      shortageAmount: Math.max(0, Number(data.shortageAmount) || 0),
+      damageAmount: Math.max(0, Number(data.damageAmount) || 0),
+      commissionAmount: Math.max(0, Number(data.commissionAmount) || 0),
+      totalAmount: Math.max(0, Number(calculatedTotal) || 0),
+      amountPaid: Math.max(0, Number(data.amountPaid) || 0),
+      status: (data.status === 'Paid' || data.status === 'Partial' || data.status === 'Unpaid') ? data.status : 'Unpaid',
+    };
+
+    createMutation.mutate({
+      data: payload
     }, {
       onSuccess: async () => {
-        await updateTripMutation.mutateAsync({
-          where: { id: data.tripId },
-          data: { podStatus: 'Submitted' }
-        });
-        
-        const outstandingAddition = calculatedTotal - data.amountPaid;
-        if (outstandingAddition > 0) {
-          const trip = tripsAvailableForInvoice.find(t => t.id === data.tripId);
-          if (trip && trip.party) {
-            await updatePartyMutation.mutateAsync({
-              where: { id: trip.partyId },
-              data: { outstandingBalance: trip.party.outstandingBalance + outstandingAddition }
+        if (tripId) {
+          try {
+            await updateTripMutation.mutateAsync({
+              where: { id: tripId },
+              data: { podStatus: 'Submitted' }
             });
+          } catch (tripErr) {
+            console.warn('[Invoices] Could not update linked trip status:', tripErr);
+          }
+          
+          try {
+            const outstandingAddition = (Number(calculatedTotal) || 0) - (Number(data.amountPaid) || 0);
+            if (outstandingAddition > 0) {
+              const trip = tripsAvailableForInvoice.find(t => t.id === tripId);
+              if (trip && trip.partyId && trip.party) {
+                await updatePartyMutation.mutateAsync({
+                  where: { id: trip.partyId },
+                  data: { outstandingBalance: (trip.party.outstandingBalance || 0) + outstandingAddition }
+                });
+              }
+            }
+          } catch (partyErr) {
+            console.warn('[Invoices] Could not update party outstanding balance:', partyErr);
           }
         }
+        toast.success(t('Invoice created successfully'));
         setIsNewOpen(false);
+        refetch();
+      },
+      onError: async (err: any) => {
+        // Fallback retry with uniquely modified invoiceNumber if unique constraint failed
+        if (err.message && (err.message.includes('Unique constraint') || err.message.includes('unique'))) {
+          try {
+            const uniqueNo = `${invNo}-${Math.floor(1000 + Math.random() * 9000)}`;
+            toast.info(t(`Invoice number in use. Saving as ${uniqueNo}...`));
+            await createMutation.mutateAsync({
+              data: {
+                ...payload,
+                invoiceNumber: uniqueNo
+              }
+            });
+            toast.success(t('Invoice created successfully'));
+            setIsNewOpen(false);
+            refetch();
+            return;
+          } catch (retryErr: any) {
+            console.error('Retry failed:', retryErr);
+          }
+        }
+        toast.error(t('Failed to create invoice: ') + err.message);
       }
     });
   };
@@ -134,19 +205,27 @@ export default function Invoices() {
       }
     }, {
       onSuccess: async () => {
-        await updateTripMutation.mutateAsync({
-          where: { id: invoice.tripId },
-          data: { paymentStatus: newStatus === 'Paid' ? 'Paid' : 'Pending' }
-        });
+        if (invoice.tripId) {
+          try {
+            await updateTripMutation.mutateAsync({
+              where: { id: invoice.tripId },
+              data: { paymentStatus: newStatus === 'Paid' ? 'Paid' : 'Pending' }
+            });
+          } catch (e) {}
+        }
         
         const balanceChange = newStatus === 'Paid' ? -invoice.totalAmount : invoice.totalAmount;
         if (invoice.trip?.party) {
-          await updatePartyMutation.mutateAsync({
-            where: { id: invoice.trip.party.id },
-            data: { outstandingBalance: Math.max(0, invoice.trip.party.outstandingBalance + balanceChange) }
-          });
+          try {
+            await updatePartyMutation.mutateAsync({
+              where: { id: invoice.trip.party.id },
+              data: { outstandingBalance: Math.max(0, invoice.trip.party.outstandingBalance + balanceChange) }
+            });
+          } catch (e) {}
         }
-      }
+        toast.success(newStatus === 'Paid' ? t('Invoice marked as Paid') : t('Invoice marked as Unpaid'));
+      },
+      onError: (err: any) => toast.error(t('Failed to update invoice: ') + err.message)
     });
   };
 
@@ -154,20 +233,28 @@ export default function Invoices() {
     if (!selectedInvoice) return;
     deleteMutation.mutate({ where: { id: selectedInvoice.id } }, {
       onSuccess: async () => {
-        await updateTripMutation.mutateAsync({
-          where: { id: selectedInvoice.tripId },
-          data: { podStatus: 'Received' }
-        });
+        if (selectedInvoice.tripId) {
+          try {
+            await updateTripMutation.mutateAsync({
+              where: { id: selectedInvoice.tripId },
+              data: { podStatus: 'Received' }
+            });
+          } catch (e) {}
+        }
         
         if (selectedInvoice.status !== 'Paid' && selectedInvoice.trip?.party) {
-          const revertAmount = selectedInvoice.totalAmount - selectedInvoice.amountPaid;
-          await updatePartyMutation.mutateAsync({
-            where: { id: selectedInvoice.trip.party.id },
-            data: { outstandingBalance: Math.max(0, selectedInvoice.trip.party.outstandingBalance - revertAmount) }
-          });
+          try {
+            const revertAmount = selectedInvoice.totalAmount - selectedInvoice.amountPaid;
+            await updatePartyMutation.mutateAsync({
+              where: { id: selectedInvoice.trip.party.id },
+              data: { outstandingBalance: Math.max(0, selectedInvoice.trip.party.outstandingBalance - revertAmount) }
+            });
+          } catch (e) {}
         }
+        toast.success(t('Invoice deleted successfully'));
         setIsDeleteOpen(false);
-      }
+      },
+      onError: (err: any) => toast.error(t('Failed to delete invoice: ') + err.message)
     });
   };
 
@@ -177,18 +264,39 @@ export default function Invoices() {
     setIsGeneratingPdf(false);
   };
 
-  const handleWhatsApp = async (invoice: InvoiceWithRelations) => {
-    const phone = invoice.trip?.party?.phone;
-    if (!phone) { alert(t('No phone number registered for this party.')); return; }
-    
+  const handleOpenInvoiceWhatsApp = async (
+    invoice: InvoiceWithRelations,
+    template: TemplateType = 'Invoice'
+  ) => {
     setSelectedInvoice(invoice);
-    setIsSendingWA(true);
-    
-    setTimeout(async () => {
-      const text = `${t('Dear ')}${invoice.trip?.party?.companyName}${t(',\n\nPlease find attached the invoice ')}${invoice.invoiceNumber}${t(' for the recent trip from ')}${invoice.trip?.from}${t(' to ')}${invoice.trip?.to}${t('.\n\nTotal Amount: Rs. ')}${invoice.totalAmount.toLocaleString('en-IN')}${t('\n\nPlease process the payment at your earliest convenience.\n\nThank you!')}`;
-      await sendWhatsAppPdf(phone, '#hidden-invoice-capture > div', `${invoice.invoiceNumber}.pdf`, text);
-      setIsSendingWA(false);
-    }, 400);
+    const party = invoice.trip?.party;
+    const recipientName = party?.companyName || 'Valued Customer';
+    const phone = party?.phone || '';
+
+    // Generate real PDF base64 attachment from captured invoice DOM
+    let attachment: WhatsAppAttachment | null = null;
+    try {
+      const base64 = await generatePdfBase64('#hidden-invoice-capture');
+      if (base64) {
+        attachment = {
+          filename: `${invoice.invoiceNumber}.pdf`,
+          mimetype: 'application/pdf',
+          base64Data: base64
+        };
+      }
+    } catch (e) {
+      console.warn('Could not generate PDF attachment:', e);
+    }
+
+    setComposerProps({
+      recipientName,
+      phone,
+      defaultTemplate: template,
+      invoiceData: invoice,
+      attachment,
+      relatedId: invoice.id
+    });
+    setComposerOpen(true);
   };
 
   const now = new Date();
@@ -199,8 +307,8 @@ export default function Invoices() {
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = 
       inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
-      inv.trip?.party?.companyName.toLowerCase().includes(search.toLowerCase()) ||
-      inv.trip?.tripNo.toLowerCase().includes(search.toLowerCase());
+      (inv.trip?.party?.companyName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (inv.trip?.tripNo || '').toLowerCase().includes(search.toLowerCase());
     
     const matchesStatus = statusFilter === 'All' || inv.status === statusFilter;
     
@@ -240,7 +348,7 @@ export default function Invoices() {
               <span className="text-slate-500 text-right">{t('Date:')}</span>
               <span className="font-medium">{new Date(invoice.date).toLocaleDateString('en-GB')}</span>
               <span className="text-slate-500 text-right">{t('Trip Ref')}</span>
-              <span className="font-mono">{invoice.trip?.tripNo}</span>
+              <span className="font-mono">{invoice.trip?.tripNo || 'Direct'}</span>
             </div>
           </div>
         </div>
@@ -248,13 +356,13 @@ export default function Invoices() {
         <div className="grid grid-cols-2 gap-12 mt-8">
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Billed To:')}</p>
-            <p className="font-bold text-slate-800 text-lg">{invoice.trip?.party?.companyName}</p>
+            <p className="font-bold text-slate-800 text-lg">{invoice.trip?.party?.companyName || 'Direct / Walk-in Customer'}</p>
             </div>
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Trip Details:')}</p>
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-sm">
-              <div className="flex justify-between mb-1"><span className="text-slate-500">{t('Route:')}</span><span className="font-medium">{invoice.trip?.from} {t('to')} {invoice.trip?.to}</span></div>
-              <div className="flex justify-between mb-1"><span className="text-slate-500">{t('Vehicle:')}</span><span className="font-mono">{invoice.trip?.vehicle?.vehicleNumber}</span></div>
+              <div className="flex justify-between mb-1"><span className="text-slate-500">{t('Route:')}</span><span className="font-medium">{invoice.trip?.from ? `${invoice.trip.from} to ${invoice.trip.to}` : 'Standard Delivery / Direct'}</span></div>
+              <div className="flex justify-between mb-1"><span className="text-slate-500">{t('Vehicle:')}</span><span className="font-mono">{invoice.trip?.vehicle?.vehicleNumber || 'N/A'}</span></div>
               <div className="flex justify-between mb-1"><span className="text-slate-500">{t('Material:')}</span><span>{invoice.trip?.material || '-'}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">{t('Weight:')}</span><span>{invoice.trip?.sizeWeight || '-'}</span></div>
             </div>
@@ -274,8 +382,8 @@ export default function Invoices() {
             <tbody className="divide-y divide-slate-100">
               <tr>
                 <td className="p-4 text-center text-slate-500">1</td>
-                <td className="p-4 font-medium text-slate-800">{t('Transportation Freight Charges')}<br/><span className="text-xs text-slate-500 font-normal mt-1 block">{t('From ')}{invoice.trip?.from} {t('to')} {invoice.trip?.to}</span></td>
-                <td className="p-4 text-center text-slate-600">{invoice.trip?.billingType}</td>
+                <td className="p-4 font-medium text-slate-800">{t('Transportation Freight Charges')}<br/><span className="text-xs text-slate-500 font-normal mt-1 block">{invoice.trip?.from ? `${t('From ')}${invoice.trip.from} ${t('to')} ${invoice.trip.to}` : 'Freight and transportation service'}</span></td>
+                <td className="p-4 text-center text-slate-600">{invoice.trip?.billingType || 'Fixed'}</td>
                 <td className="p-4 text-right font-mono font-medium">{formatCurrency(invoice.subtotal)}</td>
               </tr>
             </tbody>
@@ -300,13 +408,9 @@ export default function Invoices() {
             {(invoice.damageAmount || 0) > 0 && (
               <div className="flex justify-between text-sm text-red-500"><span>{t('Damage Ded.:')}</span><span className="font-mono">-{formatCurrency(invoice.damageAmount)}</span></div>
             )}
-            <div className="flex justify-between border-t border-slate-200 pt-3 text-lg font-bold text-primary"><span>{t('Total:')}</span><span className="font-mono">{formatCurrency(invoice.totalAmount)}</span></div>
-            {(invoice.amountPaid || 0) > 0 && (
-              <div className="flex justify-between text-sm text-green-600 border-t border-slate-100 pt-2"><span>{t('Amount Paid')}</span><span className="font-mono">-{formatCurrency(invoice.amountPaid)}</span></div>
-            )}
-            {(invoice.amountPaid || 0) > 0 && (
-              <div className={`flex justify-between text-sm font-bold p-2 rounded ${invoice.totalAmount - invoice.amountPaid <= 0 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50'}`}><span>{t('Balance Due:')}</span><span className="font-mono">{formatCurrency(Math.max(0, invoice.totalAmount - invoice.amountPaid))}</span></div>
-            )}
+            <div className="flex justify-between border-t border-slate-200 pt-3 text-lg font-bold text-primary"><span>{t('Total Amount:')}</span><span className="font-mono">{formatCurrency(invoice.totalAmount)}</span></div>
+            <div className="flex justify-between text-sm text-green-600 border-t border-slate-100 pt-2"><span>{t('Advance Received:')}</span><span className="font-mono">{formatCurrency(invoice.amountPaid)}</span></div>
+            <div className={`flex justify-between text-sm font-bold p-2 rounded ${invoice.totalAmount - invoice.amountPaid <= 0 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50'}`}><span>{t('Balance Due:')}</span><span className="font-mono">{formatCurrency(Math.max(0, invoice.totalAmount - invoice.amountPaid))}</span></div>
           </div>
         </div>
 
@@ -418,16 +522,17 @@ export default function Invoices() {
                   <TableHead>{t('Customer / Party')}</TableHead>
                   <TableHead>{t('Trip Ref')}</TableHead>
                   <TableHead className="text-right">{t('Total Amount')}</TableHead>
-                  <TableHead className="text-right">{t('Amount Paid')}</TableHead>
+                  <TableHead className="text-right">{t('Advance')}</TableHead>
+                  <TableHead className="text-right">{t('Balance')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead className="text-center">{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={7} className="text-center h-32 text-muted-foreground">{t('Loading invoices...')}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center h-32 text-muted-foreground">{t('Loading invoices...')}</TableCell></TableRow>
                 ) : filteredInvoices.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center h-32 text-muted-foreground">{t('No invoices generated yet.')}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center h-32 text-muted-foreground">{t('No invoices generated yet.')}</TableCell></TableRow>
                 ) : (
                   filteredInvoices.map((invoice) => (
                     <TableRow key={invoice.id} className="border-white/10 hover:bg-white/5">
@@ -439,10 +544,10 @@ export default function Invoices() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium text-sm">{invoice.trip?.party?.companyName}</TableCell>
+                      <TableCell className="font-medium text-sm">{invoice.trip?.party?.companyName || t('Direct / Cash Customer')}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10 font-mono">
-                          {invoice.trip?.tripNo}
+                          {invoice.trip?.tripNo || t('Direct')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-bold text-primary">{formatCurrency(invoice.totalAmount)}</TableCell>
@@ -451,6 +556,13 @@ export default function Invoices() {
                           <span className="font-medium text-green-500">{formatCurrency(invoice.amountPaid)}</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {invoice.totalAmount - invoice.amountPaid > 0 ? (
+                          <span className="font-medium text-orange-500">{formatCurrency(invoice.totalAmount - invoice.amountPaid)}</span>
+                        ) : (
+                          <span className="text-green-500 text-xs">Paid</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -477,9 +589,19 @@ export default function Invoices() {
                           <Button variant="ghost" size="sm" onClick={() => { setSelectedInvoice(invoice); setIsPreviewOpen(true) }} className="h-8 w-8 p-0 hover:bg-blue-500/20 hover:text-blue-400" title={t('View / Print')}>
                             <FileText className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleWhatsApp(invoice)} disabled={isSendingWA && selectedInvoice?.id === invoice.id} className="h-8 w-8 p-0 hover:bg-green-500/20 hover:text-green-400" title={t('Send WhatsApp')}>
-                            {isSendingWA && selectedInvoice?.id === invoice.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-green-400" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                          </Button>
+                          <WhatsAppButton 
+                            variant="icon" 
+                            onClick={() => handleOpenInvoiceWhatsApp(invoice, 'Invoice')} 
+                            title={t('Send via WhatsApp')} 
+                          />
+                          {invoice.totalAmount - invoice.amountPaid > 0 && (
+                            <WhatsAppButton 
+                              variant="icon" 
+                              onClick={() => handleOpenInvoiceWhatsApp(invoice, 'Payment Reminder')} 
+                              title={t('Send Payment Reminder')}
+                              className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                            />
+                          )}
                           <Button variant="ghost" size="sm" onClick={() => { setSelectedInvoice(invoice); setIsDeleteOpen(true) }} className="h-8 w-8 p-0 hover:bg-red-500/20 hover:text-red-400" title={t('Delete')}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -495,7 +617,7 @@ export default function Invoices() {
       </Card>
 
       <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[550px]">
+        <DialogContent className="glass-panel border-border dark:border-white/20 sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>{t('Generate New Invoice')}</DialogTitle>
             <DialogDescription>{t('Select a completed trip to bill the customer.')}</DialogDescription>
@@ -518,9 +640,25 @@ export default function Invoices() {
               <DialogDescription>{t('Review and print or share this invoice.')}</DialogDescription>
             </div>
             <div className="flex items-center space-x-2 mr-6">
-              <Button onClick={() => { if (selectedInvoice) handleWhatsApp(selectedInvoice); }} disabled={isSendingWA} className="bg-green-600 hover:bg-green-700 text-white shadow-md">
-                <MessageSquare className="mr-2 h-4 w-4" /> {isSendingWA ? t('Sending...') : t('Send WhatsApp')}
-              </Button>
+              <WhatsAppButton
+                variant="secondary"
+                onClick={() => {
+                  if (selectedInvoice) handleOpenInvoiceWhatsApp(selectedInvoice, 'Invoice');
+                }}
+              >
+                {t('Send via WhatsApp')}
+              </WhatsAppButton>
+              {selectedInvoice && (selectedInvoice.totalAmount - selectedInvoice.amountPaid > 0) && (
+                <WhatsAppButton
+                  variant="secondary"
+                  className="border-amber-500/40 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                  onClick={() => {
+                    handleOpenInvoiceWhatsApp(selectedInvoice, 'Payment Reminder');
+                  }}
+                >
+                  {t('Send Payment Reminder')}
+                </WhatsAppButton>
+              )}
               <Button onClick={handlePrint} disabled={isGeneratingPdf} className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
                 <Printer className="mr-2 h-4 w-4" /> {isGeneratingPdf ? t('Generating...') : t('Print / PDF')}
               </Button>
@@ -531,6 +669,18 @@ export default function Invoices() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Unified Professional WhatsApp Message Composer */}
+      <WhatsAppMessageComposer
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        recipientName={composerProps.recipientName}
+        phone={composerProps.phone}
+        defaultTemplate={composerProps.defaultTemplate}
+        invoiceData={composerProps.invoiceData}
+        attachment={composerProps.attachment}
+        relatedId={composerProps.relatedId}
+      />
 
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">

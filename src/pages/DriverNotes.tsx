@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Calendar, Edit, Trash2, Tag, Filter, RefreshCw, BookOpen, Users } from 'lucide-react';
+import { Plus, Search, Calendar, Edit, Trash2, Tag, Filter, RefreshCw, BookOpen, Users, Phone, DollarSign } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -22,31 +24,54 @@ import {
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency } from '@/lib/utils';
-import type { StandaloneDriverLedger } from '@prisma/client';
+import type { StandaloneDriverLedger, Driver } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 
-const ENTRY_TYPES = [
-  'Driver cash',
-  'Driver kharch',
-  'Driver bachat multiple',
-  'Driver Salary',
-  'Driver thene dene'
+// Separated into Give vs Receive for clearer driver accounting
+const GIVE_TYPES = [
+  'Salary',
+  'Advance',
+  'Cash Given',
+  'Expenses Paid',
+];
+
+const RECEIVE_TYPES = [
+  'Money Received',
+  'Recovery',
+  'Other Receipt',
 ];
 
 const TYPE_COLORS: Record<string, string> = {
+  'Salary': 'border-purple-500/30 text-purple-500 bg-purple-500/10',
+  'Advance': 'border-blue-500/30 text-blue-500 bg-blue-500/10',
+  'Cash Given': 'border-green-500/30 text-green-500 bg-green-500/10',
+  'Expenses Paid': 'border-orange-500/30 text-orange-500 bg-orange-500/10',
+  'Money Received': 'border-emerald-500/30 text-emerald-500 bg-emerald-500/10',
+  'Recovery': 'border-cyan-500/30 text-cyan-500 bg-cyan-500/10',
+  'Other Receipt': 'border-slate-500/30 text-slate-500 bg-slate-500/10',
+  // Legacy types for backward compatibility
   'Driver cash': 'border-green-500/30 text-green-500 bg-green-500/10',
   'Driver kharch': 'border-orange-500/30 text-orange-500 bg-orange-500/10',
   'Driver bachat multiple': 'border-blue-500/30 text-blue-500 bg-blue-500/10',
   'Driver Salary': 'border-purple-500/30 text-purple-500 bg-purple-500/10',
-  'Driver thene dene': 'border-red-500/30 text-red-500 bg-red-500/10'
+  'Driver thene dene': 'border-red-500/30 text-red-500 bg-red-500/10',
 };
 
 export default function DriverNotes() {
   const { t } = usePreferences();
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
-  const [selectedDriverFilter, setSelectedDriverFilter] = useState<string | null>(null);
+  const [selectedDriverFilter, setSelectedDriverFilter] = useState<string | null>(
+    (location.state as any)?.driverName || null
+  );
+  
+  useEffect(() => {
+    if ((location.state as any)?.driverName) {
+      setSelectedDriverFilter((location.state as any).driverName);
+    }
+  }, [location.state]);
   
   const [isOpen, setIsOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -55,11 +80,18 @@ export default function DriverNotes() {
 
   // Form State
   const [driverName, setDriverName] = useState('');
-  const [type, setType] = useState(ENTRY_TYPES[0]);
+  const [type, setType] = useState(GIVE_TYPES[0]);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
+
+  const { data: drivers = [] } = usePrismaQuery<Driver[]>(
+    ['drivers', 'all'],
+    'driver',
+    'findMany',
+    { orderBy: { driverName: 'asc' } }
+  );
 
   const { data: entries = [], isLoading, refetch } = usePrismaQuery<StandaloneDriverLedger[]>(
     ['standaloneLedgers', 'all'],
@@ -73,8 +105,8 @@ export default function DriverNotes() {
   const deleteMutation = usePrismaMutation<any, StandaloneDriverLedger>('standaloneDriverLedger', 'delete', [['standaloneLedgers', 'all']]);
 
   const resetForm = () => {
-    setDriverName('');
-    setType(ENTRY_TYPES[0]);
+    setDriverName(selectedDriverFilter || '');
+    setType(GIVE_TYPES[0]);
     setAmount('');
     setNotes('');
     setDate(new Date().toISOString().split('T')[0]);
@@ -103,10 +135,14 @@ export default function DriverNotes() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Driver note recorded successfully'));
         setIsOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to save note: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -133,10 +169,14 @@ export default function DriverNotes() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Driver note updated successfully'));
         setIsEditOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to update note: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -155,40 +195,62 @@ export default function DriverNotes() {
     if (!selectedEntry) return;
     deleteMutation.mutate({ where: { id: selectedEntry.id } }, {
       onSuccess: () => {
+        toast.success(t('Driver note deleted successfully'));
         setIsDeleteOpen(false);
         setSelectedEntry(null);
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to delete note: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
-  // Group entries by driver
-  const driverSummaries = entries.reduce((acc: any, entry: StandaloneDriverLedger) => {
-    if (!acc[entry.driverName]) {
-      acc[entry.driverName] = {
-        name: entry.driverName,
-        cash: 0,
-        kharch: 0,
-        bachat: 0,
-        salary: 0,
-        theneDene: 0,
+  // Group entries by driver — separate give vs receive
+  const isGiveType = (t: string) => GIVE_TYPES.includes(t) || ['Driver cash', 'Driver kharch', 'Driver Salary'].includes(t);
+  const isReceiveType = (t: string) => RECEIVE_TYPES.includes(t) || ['Driver bachat multiple', 'Driver thene dene'].includes(t);
+
+  const driverSummaries: Record<string, any> = {};
+
+  // Initialize with registered drivers to connect directory with financials
+  drivers.forEach(d => {
+    driverSummaries[d.driverName.trim()] = {
+      name: d.driverName.trim(),
+      mobile: d.mobileNumber,
+      salary: d.salary || 0,
+      totalGiven: d.advanceBalance || 0,
+      totalReceived: 0,
+    };
+  });
+
+  // Aggregate standalone entries
+  entries.forEach((entry: StandaloneDriverLedger) => {
+    const trimmedName = entry.driverName.trim();
+    if (!driverSummaries[trimmedName]) {
+      const match = drivers.find(d => d.driverName.trim().toLowerCase() === trimmedName.toLowerCase());
+      driverSummaries[trimmedName] = {
+        name: trimmedName,
+        mobile: match?.mobileNumber || '',
+        salary: match?.salary || 0,
+        totalGiven: 0,
+        totalReceived: 0,
       };
     }
     const val = entry.amount || 0;
-    if (entry.type === 'Driver cash') acc[entry.driverName].cash += val;
-    else if (entry.type === 'Driver kharch') acc[entry.driverName].kharch += val;
-    else if (entry.type === 'Driver bachat multiple') acc[entry.driverName].bachat += val;
-    else if (entry.type === 'Driver Salary') acc[entry.driverName].salary += val;
-    else if (entry.type === 'Driver thene dene') acc[entry.driverName].theneDene += val;
-    
-    return acc;
-  }, {});
+    if (isGiveType(entry.type)) {
+      driverSummaries[trimmedName].totalGiven += val;
+    } else if (isReceiveType(entry.type)) {
+      driverSummaries[trimmedName].totalReceived += val;
+    }
+  });
 
   const summaryList: any[] = Object.values(driverSummaries);
 
   const filteredEntries = entries.filter((entry: StandaloneDriverLedger) => {
     const matchesType = typeFilter === 'All' || entry.type === typeFilter;
-    const matchesDriver = selectedDriverFilter ? entry.driverName === selectedDriverFilter : true;
+    const matchesDriver = selectedDriverFilter 
+      ? entry.driverName.trim().toLowerCase() === selectedDriverFilter.trim().toLowerCase() 
+      : true;
     const matchesSearch = 
       entry.driverName.toLowerCase().includes(search.toLowerCase()) ||
       (entry.notes && entry.notes.toLowerCase().includes(search.toLowerCase()));
@@ -196,13 +258,32 @@ export default function DriverNotes() {
     return matchesType && matchesDriver && matchesSearch;
   });
 
+  const activeDriverInfo = selectedDriverFilter 
+    ? (driverSummaries[selectedDriverFilter.trim()] || drivers.find(d => d.driverName.trim().toLowerCase() === selectedDriverFilter.trim().toLowerCase()))
+    : null;
+
   const renderForm = (isEdit: boolean, onSubmit: (e: React.FormEvent) => void) => (
     <form onSubmit={onSubmit} className="space-y-4 py-4">
       {error && <div className="bg-red-500/15 border border-red-500/30 text-red-500 text-sm p-3 rounded-lg">{error}</div>}
       
       <div className="space-y-2">
         <Label>{t('Driver Name *')}</Label>
-        <Input placeholder={t('Enter driver name manually...')} value={driverName} onChange={(e) => setDriverName(e.target.value)} className="bg-background/50 border-white/10" required autoFocus />
+        <Input 
+          list="driver-name-options" 
+          placeholder={t('Enter or select driver name...')} 
+          value={driverName} 
+          onChange={(e) => setDriverName(e.target.value)} 
+          className="bg-background/50 border-white/10" 
+          required 
+          autoFocus 
+        />
+        <datalist id="driver-name-options">
+          {drivers.map(d => (
+            <option key={d.id} value={d.driverName}>
+              {d.driverName} {d.salary ? `(Salary: ₹${d.salary.toLocaleString('en-IN')})` : ''}
+            </option>
+          ))}
+        </datalist>
       </div>
 
       <div className="space-y-2">
@@ -212,7 +293,10 @@ export default function DriverNotes() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ENTRY_TYPES.map(tOption => <SelectItem key={tOption} value={tOption}>{t(tOption)}</SelectItem>)}
+            <div className="px-2 py-1 text-xs text-muted-foreground font-semibold">{t('💸 Money Given to Driver')}</div>
+            {GIVE_TYPES.map(tOption => <SelectItem key={tOption} value={tOption}>{t(tOption)}</SelectItem>)}
+            <div className="px-2 py-1 text-xs text-muted-foreground font-semibold border-t border-white/10 mt-1 pt-1">{t('💰 Money Received from Driver')}</div>
+            {RECEIVE_TYPES.map(tOption => <SelectItem key={tOption} value={tOption}>{t(tOption)}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -271,35 +355,34 @@ export default function DriverNotes() {
                 <TableHeader>
                   <TableRow className="border-white/10">
                     <TableHead>{t('Driver Name')}</TableHead>
-                    <TableHead className="text-right text-purple-400">{t('Salary')}</TableHead>
-                    <TableHead className="text-right text-orange-400">{t('Kharcha')}</TableHead>
-                    <TableHead className="text-right text-blue-400">{t('Bachat')}</TableHead>
-                    <TableHead className="text-right text-green-400">{t('Cash')}</TableHead>
-                    <TableHead className="text-right text-red-400">{t('Thene Dene')}</TableHead>
+                    <TableHead>{t('Mobile')}</TableHead>
+                    <TableHead className="text-right text-purple-400">{t('Salary (Monthly)')}</TableHead>
+                    <TableHead className="text-right text-orange-400">{t('💸 Total Given')}</TableHead>
+                    <TableHead className="text-right text-green-400">{t('💰 Total Received')}</TableHead>
                     <TableHead className="text-right">{t('Net Balance')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {summaryList.map((driver) => {
-                    const netBalance = (driver.salary + driver.bachat) - (driver.cash + driver.kharch);
+                    const netBalance = driver.totalGiven - driver.totalReceived;
+                    const isSelected = selectedDriverFilter?.trim().toLowerCase() === driver.name.toLowerCase();
                     return (
                       <TableRow 
                         key={driver.name} 
-                        className={`cursor-pointer transition-colors ${selectedDriverFilter === driver.name ? 'bg-primary/10' : 'hover:bg-white/5 border-white/10'}`}
-                        onClick={() => setSelectedDriverFilter(selectedDriverFilter === driver.name ? null : driver.name)}
+                        className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/15 border-primary/30' : 'hover:bg-white/5 border-white/10'}`}
+                        onClick={() => setSelectedDriverFilter(isSelected ? null : driver.name)}
                       >
                         <TableCell className="font-semibold flex items-center gap-2">
                           {driver.name}
-                          {selectedDriverFilter === driver.name && <Badge variant="default" className="ml-2 text-[10px]">Filtering</Badge>}
+                          {isSelected && <Badge variant="default" className="ml-1 text-[10px]">Active</Badge>}
                         </TableCell>
-                        <TableCell className="text-right font-medium text-purple-400">{formatCurrency(driver.salary)}</TableCell>
-                        <TableCell className="text-right font-medium text-orange-400">{formatCurrency(driver.kharch)}</TableCell>
-                        <TableCell className="text-right font-medium text-blue-400">{formatCurrency(driver.bachat)}</TableCell>
-                        <TableCell className="text-right font-medium text-green-400">{formatCurrency(driver.cash)}</TableCell>
-                        <TableCell className="text-right font-medium text-red-400">{formatCurrency(driver.theneDene)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{driver.mobile || '-'}</TableCell>
+                        <TableCell className="text-right font-medium text-purple-400">{driver.salary ? formatCurrency(driver.salary) : '-'}</TableCell>
+                        <TableCell className="text-right font-medium text-orange-400">{formatCurrency(driver.totalGiven)}</TableCell>
+                        <TableCell className="text-right font-medium text-green-400">{formatCurrency(driver.totalReceived)}</TableCell>
                         <TableCell className="text-right font-bold">
-                          <span className={netBalance >= 0 ? 'text-primary' : 'text-red-500'}>
-                            {formatCurrency(netBalance)}
+                          <span className={netBalance >= 0 ? 'text-orange-500' : 'text-green-500'}>
+                            {netBalance >= 0 ? `${formatCurrency(netBalance)} (Payable)` : `${formatCurrency(Math.abs(netBalance))} (Receivable)`}
                           </span>
                         </TableCell>
                       </TableRow>
@@ -312,21 +395,46 @@ export default function DriverNotes() {
         </Card>
       )}
 
+      {/* ACTIVE DRIVER FILTER BANNER */}
+      {selectedDriverFilter && (
+        <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/25 text-sm">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Users className="h-4 w-4 text-primary" />
+            <span>
+              {t('Showing records for:')} <strong className="text-foreground">{selectedDriverFilter}</strong>
+            </span>
+            {activeDriverInfo?.salary ? (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <DollarSign className="h-3 w-3 text-purple-400" /> {t('Monthly Salary:')} <strong className="text-purple-400">{formatCurrency(activeDriverInfo.salary)}</strong>
+              </span>
+            ) : null}
+            {activeDriverInfo?.mobile ? (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Phone className="h-3 w-3 text-primary" /> <strong className="text-foreground">{activeDriverInfo.mobile}</strong>
+              </span>
+            ) : null}
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedDriverFilter(null)} className="h-7 text-xs hover:bg-white/10">
+            {t('Show All Drivers')}
+          </Button>
+        </div>
+      )}
+
       {/* FILTER CONTROLS */}
       <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
         <div className="flex items-center space-x-3 flex-wrap gap-y-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <div className="flex items-center space-x-1 flex-wrap gap-y-1">
-            {['All', ...ENTRY_TYPES].map(typeOpt => (
-              <Button
-                key={typeOpt}
-                variant={typeFilter === typeOpt ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setTypeFilter(typeOpt)}
-                className={`rounded-full h-7 px-3 text-xs ${typeFilter === typeOpt ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/20'}`}
-              >
-                {t(typeOpt)}
-              </Button>
+            <Button variant={typeFilter === 'All' ? 'default' : 'ghost'} size="sm" onClick={() => setTypeFilter('All')} className={`rounded-full h-7 px-3 text-xs ${typeFilter === 'All' ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/20'}`}>{t('All')}</Button>
+            <span className="text-[10px] text-muted-foreground mx-1">|</span>
+            <span className="text-[10px] text-orange-400 mr-1">💸</span>
+            {GIVE_TYPES.map(typeOpt => (
+              <Button key={typeOpt} variant={typeFilter === typeOpt ? 'default' : 'ghost'} size="sm" onClick={() => setTypeFilter(typeOpt)} className={`rounded-full h-7 px-3 text-xs ${typeFilter === typeOpt ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/20'}`}>{t(typeOpt)}</Button>
+            ))}
+            <span className="text-[10px] text-muted-foreground mx-1">|</span>
+            <span className="text-[10px] text-green-400 mr-1">💰</span>
+            {RECEIVE_TYPES.map(typeOpt => (
+              <Button key={typeOpt} variant={typeFilter === typeOpt ? 'default' : 'ghost'} size="sm" onClick={() => setTypeFilter(typeOpt)} className={`rounded-full h-7 px-3 text-xs ${typeFilter === typeOpt ? '' : 'text-muted-foreground hover:text-foreground hover:bg-white/20'}`}>{t(typeOpt)}</Button>
             ))}
           </div>
         </div>

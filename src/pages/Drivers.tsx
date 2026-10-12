@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Edit, Trash2, RefreshCw, Users, DollarSign, Phone, FileText, CheckCircle, PlusCircle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, RefreshCw, Users, BookOpen, Phone, FileText, CheckCircle, PlusCircle, AlertTriangle, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -24,18 +25,47 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
-import type { Driver, DriverLedger } from '@prisma/client';
+import type { Driver, DriverLedger, StandaloneDriverLedger } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
+import { WhatsAppMessageComposer } from '@/components/whatsapp/WhatsAppMessageComposer';
+import type { TemplateType } from '@/components/whatsapp/WhatsAppMessageComposer';
 
 export default function Drivers() {
   const { t } = usePreferences();
   const location = useLocation();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [isOpen, setIsOpen] = useState(location.state && (location.state as any).openNew);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+
+  // WhatsApp Composer State
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerProps, setComposerProps] = useState<{
+    recipientName: string;
+    phone: string;
+    defaultTemplate: TemplateType;
+    driverData?: any;
+    relatedId?: string;
+  }>({
+    recipientName: '',
+    phone: '',
+    defaultTemplate: 'Driver Assignment'
+  });
+
+  const handleOpenDriverWhatsApp = (driver: Driver, template: TemplateType = 'Driver Assignment') => {
+    setComposerProps({
+      recipientName: driver.driverName,
+      phone: driver.mobileNumber,
+      defaultTemplate: template,
+      driverData: driver,
+      relatedId: driver.id
+    });
+    setComposerOpen(true);
+  };
 
   // Settle Advance State
   const [isSettleOpen, setIsSettleOpen] = useState(false);
@@ -59,6 +89,12 @@ export default function Drivers() {
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   
   const { data: drivers = [], isLoading, refetch } = usePrismaQuery<Driver[]>(['drivers', 'all'], 'driver', 'findMany', { orderBy: { driverName: 'asc' } });
+
+  const { data: standaloneEntries = [] } = usePrismaQuery<StandaloneDriverLedger[]>(
+    ['standaloneLedgers', 'all'],
+    'standaloneDriverLedger',
+    'findMany'
+  );
   
   const { data: ledgerData = [] } = usePrismaQuery<DriverLedger[]>(
     ['driverLedger', selectedDriver?.id || ''], 
@@ -67,6 +103,21 @@ export default function Drivers() {
     { where: { driverId: selectedDriver?.id }, orderBy: { date: 'desc' } },
     { enabled: !!selectedDriver?.id && isLedgerOpen }
   );
+
+  const isGiveType = (type: string) => 
+    ['Salary', 'Advance', 'Cash Given', 'Expenses Paid', 'Driver cash', 'Driver kharch', 'Driver Salary'].includes(type);
+  const isReceiveType = (type: string) => 
+    ['Money Received', 'Recovery', 'Other Receipt', 'Driver bachat multiple', 'Driver thene dene'].includes(type);
+
+  const getDriverFinancials = (d: Driver) => {
+    const matchingNotes = standaloneEntries.filter(
+      e => e.driverName.trim().toLowerCase() === d.driverName.trim().toLowerCase()
+    );
+    const totalGiven = matchingNotes.reduce((sum, e) => isGiveType(e.type) ? sum + (e.amount || 0) : sum, 0) + (d.advanceBalance || 0);
+    const totalReceived = matchingNotes.reduce((sum, e) => isReceiveType(e.type) ? sum + (e.amount || 0) : sum, 0);
+    const netBalance = totalGiven - totalReceived;
+    return { totalGiven, totalReceived, netBalance, notesCount: matchingNotes.length };
+  };
 
   const createMutation = usePrismaMutation<any, Driver>('driver', 'create', [['drivers', 'all']]);
   const updateMutation = usePrismaMutation<any, Driver>('driver', 'update', [['drivers', 'all']]);
@@ -140,10 +191,16 @@ export default function Drivers() {
             date: new Date()
           }
         }, {
-          onSuccess: () => setIsGiveOpen(false)
+          onSuccess: () => {
+            toast.success(t('Advance recorded successfully'));
+            setIsGiveOpen(false);
+          }
         });
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to record advance: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -173,10 +230,14 @@ export default function Drivers() {
             }
           });
         }
+        toast.success(t('Driver created successfully'));
         setIsOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to create driver: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -203,10 +264,14 @@ export default function Drivers() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Driver updated successfully'));
         setIsEditOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to update driver: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -225,10 +290,14 @@ export default function Drivers() {
     if (!selectedDriver) return;
     deleteMutation.mutate({ where: { id: selectedDriver.id } }, {
       onSuccess: () => {
+        toast.success(t('Driver deleted successfully'));
         setIsDeleteOpen(false);
         setSelectedDriver(null);
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to delete driver: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -296,7 +365,7 @@ export default function Drivers() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="glass">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">{t('Total Drivers')}</CardTitle>
@@ -319,12 +388,26 @@ export default function Drivers() {
         </Card>
         <Card className="glass">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t('Total Advance Balance')}</CardTitle>
-            <DollarSign className="h-4 w-4 text-orange-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t('Total Given')}</CardTitle>
+            <ArrowUpRight className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500">{formatCurrency(drivers.reduce((acc, d) => acc + (d.advanceBalance || 0), 0))}</div>
-            <p className="text-xs text-muted-foreground mt-1">{t('across')} {drivers.filter(d => (d.advanceBalance || 0) > 0).length} {t('drivers')}</p>
+            <div className="text-2xl font-bold text-orange-500">
+              {formatCurrency(drivers.reduce((acc, d) => acc + getDriverFinancials(d).totalGiven, 0))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{t('advances & payouts')}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t('Total Received')}</CardTitle>
+            <ArrowDownLeft className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-500">
+              {formatCurrency(drivers.reduce((acc, d) => acc + getDriverFinancials(d).totalReceived, 0))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{t('recoveries & receipts')}</p>
           </CardContent>
         </Card>
       </div>
@@ -356,44 +439,56 @@ export default function Drivers() {
             <Table>
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-white/5">
-                  <TableHead>{t('Driver Name')}</TableHead>
-                  <TableHead>{t('Mobile')}</TableHead>
-                  <TableHead>{t('Salary')}</TableHead>
+                  <TableHead>{t('Driver Name & Mobile')}</TableHead>
+                  <TableHead>{t('Salary (Monthly)')}</TableHead>
+                  <TableHead className="text-right text-orange-400">{t('💸 Total Given')}</TableHead>
+                  <TableHead className="text-right text-green-400">{t('💰 Total Received')}</TableHead>
+                  <TableHead className="text-right">{t('Net Balance')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
-                  <TableHead className="text-right">{t('Advance Balance')}</TableHead>
                   <TableHead className="text-center">{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center h-32 text-muted-foreground">{t('Loading drivers...')}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center h-32 text-muted-foreground">{t('Loading drivers...')}</TableCell></TableRow>
                 ) : filteredDrivers.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center h-32 text-muted-foreground">{t('No drivers found.')}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center h-32 text-muted-foreground">{t('No drivers found.')}</TableCell></TableRow>
                 ) : (
                   filteredDrivers.map((driver) => {
+                    const fin = getDriverFinancials(driver);
                     return (
                       <TableRow key={driver.id} className="border-white/10 hover:bg-white/5">
-                        <TableCell className="font-semibold text-foreground">
-                          {driver.driverName}
-                        </TableCell>
                         <TableCell>
-                          <a href={`tel:${driver.mobileNumber}`} className="flex items-center text-primary hover:text-primary/80 transition-colors" title="Click to call">
-                            <Phone className="h-3.5 w-3.5 mr-1" />{driver.mobileNumber}
+                          <div className="font-semibold text-foreground">{driver.driverName}</div>
+                          <a href={`tel:${driver.mobileNumber}`} className="flex items-center text-xs text-primary hover:text-primary/80 transition-colors mt-0.5" title="Click to call">
+                            <Phone className="h-3 w-3 mr-1" />{driver.mobileNumber}
                           </a>
                         </TableCell>
-                        <TableCell className="font-medium">{formatCurrency(driver.salary || 0)}</TableCell>
+                        <TableCell className="font-medium text-purple-400">{formatCurrency(driver.salary || 0)}</TableCell>
+                        <TableCell className="text-right font-medium text-orange-400">{formatCurrency(fin.totalGiven)}</TableCell>
+                        <TableCell className="text-right font-medium text-green-400">{formatCurrency(fin.totalReceived)}</TableCell>
+                        <TableCell className="text-right font-bold">
+                          <span className={fin.netBalance >= 0 ? 'text-orange-500' : 'text-green-500'}>
+                            {fin.netBalance >= 0 ? `${formatCurrency(fin.netBalance)} (Payable)` : `${formatCurrency(Math.abs(fin.netBalance))} (Receivable)`}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={driver.status === 'On-Trip' ? 'border-blue-500/30 text-blue-500 bg-blue-500/10' : driver.status === 'Active' ? 'border-green-500/30 text-green-500 bg-green-500/10' : 'border-red-500/30 text-red-500 bg-red-500/10'}>
                             {t(driver.status)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <span className={`font-bold ${(driver.advanceBalance || 0) > 0 ? 'text-orange-500' : 'text-muted-foreground'}`}>{formatCurrency(driver.advanceBalance || 0)}</span>
-                        </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center space-x-1">
-                            <Button variant="ghost" size="sm" onClick={() => handleOpenLedger(driver)} className="h-8 w-8 p-0 hover:bg-purple-500/20 hover:text-purple-400" title={t('View Ledger (Khata)')}><FileText className="h-3.5 w-3.5" /></Button>
-                            {(driver.advanceBalance || 0) > 0 && (
+                            <Button variant="ghost" size="sm" onClick={() => handleOpenLedger(driver)} className="h-8 w-8 p-0 hover:bg-purple-500/20 hover:text-purple-400" title={t('View Quick Ledger')}><FileText className="h-3.5 w-3.5" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => navigate('/driver-notes', { state: { driverName: driver.driverName } })} className="h-8 w-8 p-0 hover:bg-indigo-500/20 hover:text-indigo-400" title={t('Open Notes & Accounts')}><BookOpen className="h-3.5 w-3.5" /></Button>
+                            {driver.mobileNumber && (
+                              <WhatsAppButton
+                                variant="icon"
+                                onClick={() => handleOpenDriverWhatsApp(driver)}
+                                title={t('Send WhatsApp to Driver')}
+                              />
+                            )}
+                            {(fin.totalGiven > 0 || (driver.advanceBalance || 0) > 0) && (
                               <Button variant="ghost" size="sm" onClick={() => handleOpenSettle(driver)} className="h-8 w-8 p-0 hover:bg-green-500/20 hover:text-green-400" title={t('Settle Advance')}><CheckCircle className="h-3.5 w-3.5" /></Button>
                             )}
                             <Button variant="ghost" size="sm" onClick={() => handleOpenGive(driver)} className="h-8 w-8 p-0 hover:bg-orange-500/20 hover:text-orange-400" title={t('Give Advance')}><PlusCircle className="h-3.5 w-3.5" /></Button>
@@ -462,10 +557,18 @@ export default function Drivers() {
       </Dialog>
 
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle className="text-red-500">{t('Delete Driver?')}</DialogTitle>
-            <DialogDescription>{t('Are you sure you want to permanently delete ')}<strong>{selectedDriver?.driverName}</strong>{t('? This action cannot be undone.')}</DialogDescription>
+            <DialogTitle className="text-red-500 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              {t('Delete Driver?')}
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p>{t('Are you sure you want to permanently delete ')}<strong>{selectedDriver?.driverName}</strong>{t('? This action cannot be undone.')}</p>
+              <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400 leading-relaxed">
+                {t('Warning: Deleting this driver will affect linked trip histories, advance records, settlements, and driver ledger entries.')}
+              </div>
+            </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setIsDeleteOpen(false)}>{t('Cancel')}</Button>
@@ -477,8 +580,29 @@ export default function Drivers() {
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
         <DialogContent className="glass-panel border-white/20 sm:max-w-[700px] max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{t('Driver Ledger (Khata) - ')}{selectedDriver?.driverName}</DialogTitle>
-            <DialogDescription>{t('Transaction history and current advance balance: ')}<span className="font-bold text-orange-500">{formatCurrency(selectedDriver?.advanceBalance || 0)}</span></DialogDescription>
+            <div className="flex items-center justify-between pr-6">
+              <DialogTitle>{t('Driver Ledger (Khata) — ')}{selectedDriver?.driverName}</DialogTitle>
+              {selectedDriver && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => { setIsLedgerOpen(false); navigate('/driver-notes', { state: { driverName: selectedDriver.driverName } }); }}
+                  className="text-xs bg-primary/10 border-primary/30 hover:bg-primary/20 text-primary"
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1" /> {t('Open Notes & Ledger')}
+                </Button>
+              )}
+            </div>
+            {selectedDriver && (() => {
+              const fin = getDriverFinancials(selectedDriver);
+              return (
+                <div className="grid grid-cols-3 gap-2 p-2.5 rounded bg-white/5 border border-white/10 text-xs mt-2">
+                  <div>{t('Monthly Salary:')} <strong className="text-purple-400">{formatCurrency(selectedDriver.salary || 0)}</strong></div>
+                  <div>{t('Total Given:')} <strong className="text-orange-400">{formatCurrency(fin.totalGiven)}</strong></div>
+                  <div>{t('Net Balance:')} <strong className={fin.netBalance >= 0 ? 'text-orange-500' : 'text-green-500'}>{formatCurrency(Math.abs(fin.netBalance))} {fin.netBalance >= 0 ? '(Payable)' : '(Receivable)'}</strong></div>
+                </div>
+              );
+            })()}
           </DialogHeader>
           <div className="flex-1 overflow-y-auto mt-4 rounded-md border border-white/10">
             <Table>
@@ -514,6 +638,17 @@ export default function Drivers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Unified Professional WhatsApp Message Composer */}
+      <WhatsAppMessageComposer
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        recipientName={composerProps.recipientName}
+        phone={composerProps.phone}
+        defaultTemplate={composerProps.defaultTemplate}
+        driverData={composerProps.driverData}
+        relatedId={composerProps.relatedId}
+      />
     </div>
   );
 }

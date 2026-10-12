@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Search, Receipt, Calendar, DollarSign, Tag, Briefcase, Trash2, Edit, Filter, RefreshCw, TrendingDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -28,21 +29,27 @@ import { usePreferences } from '@/contexts/PreferencesContext';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 
 const EXPENSE_CATEGORIES = [
-  'Toll & RTO',
+  'Toll',
   'Maintenance & Repairs',
-  'Driver Salary / Bhatta',
-  'Office Rent / Bills',
-  'Taxes & Insurance',
-  'Other Operational Expenses'
+  'Salary',
+  'Rent',
+  'Office Bills',
+  'Other'
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  'Toll & RTO': 'border-blue-500/30 text-blue-500 bg-blue-500/10',
+  'Toll': 'border-blue-500/30 text-blue-500 bg-blue-500/10',
   'Maintenance & Repairs': 'border-orange-500/30 text-orange-500 bg-orange-500/10',
+  'Salary': 'border-purple-500/30 text-purple-500 bg-purple-500/10',
+  'Rent': 'border-green-500/30 text-green-500 bg-green-500/10',
+  'Office Bills': 'border-yellow-500/30 text-yellow-500 bg-yellow-500/10',
+  'Other': 'border-slate-500/30 text-slate-500 bg-slate-500/10',
+  // Legacy support
+  'Toll & RTO': 'border-blue-500/30 text-blue-500 bg-blue-500/10',
   'Driver Salary / Bhatta': 'border-purple-500/30 text-purple-500 bg-purple-500/10',
   'Office Rent / Bills': 'border-green-500/30 text-green-500 bg-green-500/10',
   'Taxes & Insurance': 'border-yellow-500/30 text-yellow-500 bg-yellow-500/10',
-  'Other Operational Expenses': 'border-slate-500/30 text-slate-500 bg-slate-500/10'
+  'Other Operational Expenses': 'border-slate-500/30 text-slate-500 bg-slate-500/10',
 };
 
 export default function Expenses() {
@@ -101,10 +108,14 @@ export default function Expenses() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Expense recorded successfully'));
         setIsOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to save expense: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -128,10 +139,14 @@ export default function Expenses() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Expense updated successfully'));
         setIsEditOpen(false);
         resetForm();
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to update expense: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -151,10 +166,14 @@ export default function Expenses() {
     if (!selectedExpense) return;
     deleteMutation.mutate({ where: { id: selectedExpense.id } }, {
       onSuccess: () => {
+        toast.success(t('Expense deleted successfully'));
         setIsDeleteOpen(false);
         setSelectedExpense(null);
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to delete expense: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -187,7 +206,7 @@ export default function Expenses() {
   });
 
   const totalExpense = filteredExpenses.reduce((acc: number, exp: Expense) => acc + (exp.amount || 0), 0);
-  const tollExpenses = filteredExpenses.filter((e: Expense) => e.category === 'Toll & RTO').reduce((acc: number, exp: Expense) => acc + (exp.amount || 0), 0);
+  const tollExpenses = filteredExpenses.filter((e: Expense) => e.category === 'Toll' || e.category === 'Toll & RTO').reduce((acc: number, exp: Expense) => acc + (exp.amount || 0), 0);
   const maintenanceExpenses = filteredExpenses.filter((e: Expense) => e.category === 'Maintenance & Repairs').reduce((acc: number, exp: Expense) => acc + (exp.amount || 0), 0);
   const thisMonthTotal = expenses.filter((e: Expense) => new Date(e.date) >= thisMonthStart).reduce((acc: number, e: Expense) => acc + (e.amount || 0), 0);
 
@@ -271,7 +290,7 @@ export default function Expenses() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(tollExpenses)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{filteredExpenses.filter(e => e.category === 'Toll & RTO').length}{t(' entries')}</p>
+            <p className="text-xs text-muted-foreground mt-1">{filteredExpenses.filter(e => e.category === 'Toll' || e.category === 'Toll & RTO').length}{t(' entries')}</p>
           </CardContent>
         </Card>
         <Card className="glass">

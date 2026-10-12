@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Edit, Trash2, RefreshCw, Building, DollarSign, Phone, FileText, CheckCircle, MessageSquare } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, RefreshCw, Building, DollarSign, Phone, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -24,8 +25,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
+import { generatePdfBase64 } from '@/lib/services';
 import type { Party, PartyLedger } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
+import { WhatsAppMessageComposer } from '@/components/whatsapp/WhatsAppMessageComposer';
+import type { WhatsAppAttachment, TemplateType } from '@/components/whatsapp/WhatsAppMessageComposer';
 
 export default function Parties() {
   const { t } = usePreferences();
@@ -52,7 +57,21 @@ export default function Parties() {
   const [status, setStatus] = useState('Active');
   const [error, setError] = useState('');
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
-  const [isSendingWA, setIsSendingWA] = useState(false);
+
+  // WhatsApp Composer State
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerProps, setComposerProps] = useState<{
+    recipientName: string;
+    phone: string;
+    defaultTemplate: TemplateType;
+    partyData?: any;
+    attachment?: WhatsAppAttachment | null;
+    relatedId?: string;
+  }>({
+    recipientName: '',
+    phone: '',
+    defaultTemplate: 'Customer Balance'
+  });
 
   const systemCompanyName = localStorage.getItem('companyName') || 'TMS Logistics Pro';
   const systemCompanySub = localStorage.getItem('companySub') || 'Reliable Cargo & Transportation Services';
@@ -126,42 +145,35 @@ export default function Parties() {
     );
   };
 
-  const handleWhatsAppReminder = async (party: Party) => {
-    if (!party.phone) { alert(t('No phone number registered for this party.')); return; }
-    const text = `Dear ${party.companyName},\n\nThis is a friendly reminder from TMS Logistics regarding an outstanding balance of Rs. ${party.outstandingBalance.toLocaleString('en-IN')} on your account.\n\nPlease arrange for the settlement at your earliest convenience.\n\nThank you!`;
-    if (window.electronAPI?.whatsapp) {
-      const isConnected = localStorage.getItem('whatsappConnected') === 'true';
-      if (isConnected) {
-        setSelectedParty(party);
-        setIsSendingWA(true);
-        setTimeout(async () => {
-          try {
-            const element = document.querySelector('#hidden-reminder-capture > div');
-            if (!element) throw new Error("Reminder element not found in capture container");
-            const htmlContent = `
-              <!DOCTYPE html>
-              <html>
-                <head>
-                  <meta charset="utf-8">
-                  <script src="https://cdn.tailwindcss.com"></script>
-                  <style>
-                    body { margin: 0; padding: 40px; font-family: sans-serif; background: white !important; color: #0f172a !important; }
-                  </style>
-                </head>
-                <body>
-                  ${element.outerHTML}
-                </body>
-              </html>
-            `;
-            const pdfBase64 = await window.electronAPI.app!.printToPdf(htmlContent);
-            const res = await window.electronAPI.whatsapp!.sendMedia({ phone: party.phone!, caption: text, base64Data: pdfBase64, mimetype: 'application/pdf', filename: `Outstanding_Statement_${party.companyName.replace(/\s+/g, '_')}.pdf` });
-            if (res && res.error) { alert('Error sending WhatsApp reminder: ' + res.error); } else { alert(`WhatsApp reminder sent to ${party.companyName}!`); }
-          } catch (err: any) { alert('WhatsApp send failed: ' + err.message); } finally { setIsSendingWA(false); setSelectedParty(null); }
-        }, 400);
-        return;
+  const handleOpenPartyWhatsApp = async (
+    party: Party,
+    template: TemplateType = 'Customer Balance'
+  ) => {
+    setSelectedParty(party);
+
+    let attachment: WhatsAppAttachment | null = null;
+    try {
+      const base64 = await generatePdfBase64('#hidden-reminder-capture');
+      if (base64) {
+        attachment = {
+          filename: `Statement_${(party.companyName || 'Customer').replace(/\s+/g, '_')}.pdf`,
+          mimetype: 'application/pdf',
+          base64Data: base64
+        };
       }
+    } catch (e) {
+      console.warn('Could not generate PDF statement for party attachment:', e);
     }
-    alert("Please connect WhatsApp in Settings to send reminders automatically.");
+
+    setComposerProps({
+      recipientName: party.companyName,
+      phone: party.phone || '',
+      defaultTemplate: template,
+      partyData: party,
+      attachment,
+      relatedId: party.id
+    });
+    setComposerOpen(true);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
@@ -268,10 +280,14 @@ export default function Parties() {
     if (!selectedPartyAction) return;
     deleteMutation.mutate({ where: { id: selectedPartyAction.id } }, {
       onSuccess: () => {
+        toast.success(t('Party deleted successfully'));
         setIsDeleteOpen(false);
         setSelectedPartyAction(null);
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to delete party: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -455,10 +471,12 @@ export default function Parties() {
                               <CheckCircle className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          {(party.outstandingBalance || 0) > 0 && (
-                            <Button variant="ghost" size="sm" onClick={() => handleWhatsAppReminder(party)} disabled={isSendingWA && selectedParty?.id === party.id} className="h-8 w-8 p-0 text-emerald-500 hover:bg-emerald-500/10" title={t('Send WhatsApp Reminder')}>
-                              {isSendingWA && selectedParty?.id === party.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                            </Button>
+                          {party.phone && (
+                            <WhatsAppButton
+                              variant="icon"
+                              onClick={() => handleOpenPartyWhatsApp(party, (party.outstandingBalance || 0) > 0 ? 'Customer Balance' : 'Custom Message')}
+                              title={(party.outstandingBalance || 0) > 0 ? t('Send Outstanding Balance via WhatsApp') : t('Send WhatsApp Message')}
+                            />
                           )}
                           <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(party)} className="h-8 w-8 p-0 hover:bg-blue-500/20 hover:text-blue-400" title={t('Edit Party')}>
                             <Edit className="h-3.5 w-3.5" />
@@ -492,10 +510,18 @@ export default function Parties() {
       </Dialog>
 
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle className="text-red-500">{t('Delete Party?')}</DialogTitle>
-            <DialogDescription>{t('Permanently delete ')}<strong>{selectedPartyAction?.companyName}</strong>{t('? This cannot be undone.')}</DialogDescription>
+            <DialogTitle className="text-red-500 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              {t('Delete Party?')}
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p>{t('Permanently delete ')}<strong>{selectedPartyAction?.companyName}</strong>{t('? This action cannot be undone.')}</p>
+              <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400 leading-relaxed">
+                {t('Warning: Deleting this party will break references on linked trips, invoices, and ledger records. Ensure all dues are settled before deleting.')}
+              </div>
+            </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setIsDeleteOpen(false)}>{t('Cancel')}</Button>
@@ -524,9 +550,20 @@ export default function Parties() {
 
       <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
         <DialogContent className="glass-panel border-white/20 sm:max-w-[700px] max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{t('Party Khata (Ledger) - ')}{selectedPartyAction?.companyName}</DialogTitle>
-            <DialogDescription>{t('Transaction history. Current Outstanding Balance: ')}<span className="font-bold text-orange-500">{formatCurrency(selectedPartyAction?.outstandingBalance || 0)}</span></DialogDescription>
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle>{t('Party Khata (Ledger) - ')}{selectedPartyAction?.companyName}</DialogTitle>
+              <DialogDescription>{t('Transaction history. Current Outstanding Balance: ')}<span className="font-bold text-orange-500">{formatCurrency(selectedPartyAction?.outstandingBalance || 0)}</span></DialogDescription>
+            </div>
+            {selectedPartyAction?.phone && (
+              <WhatsAppButton
+                variant="secondary"
+                onClick={() => handleOpenPartyWhatsApp(selectedPartyAction, 'Customer Balance')}
+                className="mr-6"
+              >
+                {t('Send Statement')}
+              </WhatsAppButton>
+            )}
           </DialogHeader>
           <div className="flex-1 overflow-y-auto mt-4 rounded-md border border-white/10">
             <Table>
@@ -566,6 +603,18 @@ export default function Parties() {
       <div id="hidden-reminder-capture" className="absolute left-[-9999px] top-[-9999px] bg-white text-slate-900" style={{ width: '800px' }}>
         {selectedParty && renderReminderContent(selectedParty)}
       </div>
+
+      {/* Unified Professional WhatsApp Message Composer */}
+      <WhatsAppMessageComposer
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        recipientName={composerProps.recipientName}
+        phone={composerProps.phone}
+        defaultTemplate={composerProps.defaultTemplate}
+        partyData={composerProps.partyData}
+        attachment={composerProps.attachment}
+        relatedId={composerProps.relatedId}
+      />
     </div>
   );
 }

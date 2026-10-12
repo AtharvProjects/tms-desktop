@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
+import { calcTripNetProfit } from '@/lib/calculations';
 import type { TripFormValues } from './schema';
 import { usePreferences } from '@/contexts/PreferencesContext';
 
@@ -29,18 +30,32 @@ export function TripSettleForm({ initialData, onSubmit, onCancel, isSubmitting }
     }
   });
 
-  const freightAmount = initialData.freightAmount || 0;
-  const commission = initialData.commission || 0;
+  const freightAmount = Number(initialData.freightAmount) || 0;
+  const commission = Number(initialData.commission) || 0;
+  const labourCharges = Number(initialData.labourCharges) || 0;
+  const permissionCharges = Number(initialData.permissionCharges) || 0;
   
-  const dieselAmount = watch('dieselAmount') || 0;
-  const liquidDiesel = watch('liquidDiesel') || 0;
-  const toll = watch('toll') || 0;
-  const maintenance = watch('maintenance') || 0;
-  const extraRunning = watch('extraRunning') || 0;
-  const extraCharges = watch('extraCharges') || 0;
-  const driverCash = watch('driverCash') || 0;
+  const dieselAmount = Number(watch('dieselAmount')) || 0;
+  const liquidDiesel = Number(watch('liquidDiesel')) || 0;
+  const toll = Number(watch('toll')) || 0;
+  const maintenance = Number(watch('maintenance')) || 0;
+  const extraRunning = Number(watch('extraRunning')) || 0;
+  const extraCharges = Number(watch('extraCharges')) || 0;
+  const driverCash = Number(watch('driverCash')) || 0;
 
-  const netProfit = freightAmount - commission - dieselAmount - liquidDiesel - driverCash - toll - maintenance - extraRunning - extraCharges;
+  const netProfit = calcTripNetProfit({
+    freightAmount,
+    commission,
+    dieselAmount,
+    liquidDiesel,
+    driverCash,
+    toll,
+    maintenance,
+    extraRunning,
+    extraCharges,
+    labourCharges,
+    permissionCharges,
+  });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">

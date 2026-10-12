@@ -1,17 +1,16 @@
 import { z } from 'zod';
 
 export const tripSchema = z.object({
-  tripNo: z.string().min(1, 'Trip Number is required'),
+  tripNo: z.string().optional().default(''),
   tripName: z.string().nullable().optional(),
-  tripDate: z.string().min(1, 'Trip Date is required'),
-  vehicleId: z.string().min(1, 'Vehicle is required'),
-  partyId: z.string().min(1, 'Party is required'),
+  tripDate: z.string().optional().default(''),
+  vehicleId: z.string().nullable().optional(),
+  partyId: z.string().nullable().optional(),
   driverId: z.string().nullable().optional(),
-  from: z.string().min(1, 'Route From is required'),
-  to: z.string().min(1, 'Route To is required'),
+  from: z.string().nullable().optional(),
+  to: z.string().nullable().optional(),
   material: z.string().nullable().optional(),
   sizeWeight: z.string().nullable().optional(),
-  route: z.string().nullable().optional(),
   billingType: z.string().default('Fixed'),
   freightAmount: z.coerce.number().min(0).default(0),
   dieselAmount: z.coerce.number().min(0).default(0),
@@ -28,20 +27,20 @@ export const tripSchema = z.object({
   unloadingDate: z.string().nullable().optional(),
   reportDate: z.string().nullable().optional(),
   extraCharges: z.coerce.number().min(0).default(0),
-  driverSavings: z.coerce.number().min(0).default(0),
-  selfExpenses: z.coerce.number().min(0).default(0),
-  status: z.enum(['Scheduled', 'Loading', 'In Transit', 'Unloading', 'Completed']).default('Scheduled'),
-  podStatus: z.enum(['Pending', 'Received', 'Submitted']).default('Pending'),
-  paymentStatus: z.enum(['Pending', 'Partial', 'Paid']).default('Pending'),
+  labourCharges: z.coerce.number().min(0).default(0),
+  permissionCharges: z.coerce.number().min(0).default(0),
+  status: z.enum(['Draft', 'Scheduled', 'Loading', 'In Transit', 'Unloading', 'Completed', 'Cancelled']).default('Draft'),
+  podStatus: z.enum(['Pending', 'Received', 'Submitted', 'Verified']).default('Pending'),
+  paymentStatus: z.enum(['Pending', 'Partial', 'Paid', 'Overdue']).default('Pending'),
   notes: z.string().nullable().optional(),
   
-  // New Array Fields
+  // Array Fields — all optional, default to empty
   directDrivers: z.array(z.object({
     driverName: z.string().min(1, "Name required")
   })).default([]),
   
   driverAdvances: z.array(z.object({
-    amount: z.coerce.number().min(1, "Amount required"),
+    amount: z.coerce.number().min(0).default(0),
     date: z.string(),
     remarks: z.string().nullable().optional()
   })).default([]),
@@ -53,30 +52,30 @@ export const tripSchema = z.object({
   })).default([]),
   
   tollEntries: z.array(z.object({
-    tollName: z.string().min(1, "Name required"),
-    amount: z.coerce.number().min(1, "Amount required"),
+    tollName: z.string().optional().default(''),
+    amount: z.coerce.number().min(0).default(0),
     date: z.string(),
     remarks: z.string().nullable().optional()
   })).default([]),
   
   maintenanceEntries: z.array(z.object({
-    maintenanceType: z.string().min(1, "Type required"),
-    amount: z.coerce.number().min(1, "Amount required"),
+    maintenanceType: z.string().optional().default(''),
+    amount: z.coerce.number().min(0).default(0),
     date: z.string(),
     remarks: z.string().nullable().optional()
   })).default([]),
   
   dieselEntries: z.array(z.object({
     fuelStation: z.string().nullable().optional(),
-    litres: z.coerce.number().min(1, "Litres required"),
-    ratePerLitre: z.coerce.number().min(1, "Rate required"),
+    litres: z.coerce.number().min(0).default(0),
+    ratePerLitre: z.coerce.number().min(0).default(0),
     totalCost: z.coerce.number().min(0),
     date: z.string()
   })).default([]),
   
   liquidEntries: z.array(z.object({
-    litres: z.coerce.number().min(1, "Quantity required"),
-    ratePerLitre: z.coerce.number().min(1, "Rate required"),
+    litres: z.coerce.number().min(0).default(0),
+    ratePerLitre: z.coerce.number().min(0).default(0),
     totalCost: z.coerce.number().min(0),
     date: z.string()
   })).default([]),
@@ -89,3 +88,4 @@ export const tripSchema = z.object({
 });
 
 export type TripFormValues = z.infer<typeof tripSchema>;
+

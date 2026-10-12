@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Search, Fuel, Calendar, DollarSign, Gauge, Trash2, Filter, RefreshCw, TrendingDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { 
   Table, 
   TableBody, 
@@ -114,9 +115,11 @@ export default function Diesel() {
       await createMutation.mutateAsync({
         data: dataToInsert
       });
+      toast.success(t('Diesel entries recorded successfully'));
       setIsOpen(false);
       resetForm();
     } catch (err: any) {
+      toast.error(err.message || t('Failed to save diesel entries'));
       setError(err.message);
     }
   };
@@ -125,10 +128,14 @@ export default function Diesel() {
     if (!selectedLog) return;
     deleteMutation.mutate({ where: { id: selectedLog.id } }, {
       onSuccess: () => {
+        toast.success(t('Diesel log deleted successfully'));
         setIsDeleteOpen(false);
         setSelectedLog(null);
       },
-      onError: (err: any) => setError(err.message)
+      onError: (err: any) => {
+        toast.error(t('Failed to delete diesel log: ') + err.message);
+        setError(err.message);
+      }
     });
   };
 
@@ -170,7 +177,7 @@ export default function Diesel() {
   const vehicleMileages: Record<string, { total: number; count: number; vehicleNumber: string }> = {};
   logs.forEach((log, index) => {
     const mileage = getMileage(log, index);
-    if (mileage && log.vehicle) {
+    if (mileage && log.vehicle && log.vehicleId) {
       if (!vehicleMileages[log.vehicleId]) {
         vehicleMileages[log.vehicleId] = { total: 0, count: 0, vehicleNumber: log.vehicle.vehicleNumber };
       }
@@ -291,7 +298,7 @@ export default function Diesel() {
                   <TableHead className="text-right">{t('Diesel (Quantity)')}</TableHead>
                   <TableHead className="text-right">{t('Price')}</TableHead>
                   <TableHead className="text-right">{t('Total')}</TableHead>
-                  <TableHead className="text-right">{t('Odometer')}</TableHead>
+                  <TableHead className="text-right">{t('Kilometer (Optional)')}</TableHead>
                   <TableHead className="text-center">{t('Action')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -436,7 +443,7 @@ export default function Diesel() {
                         <Input type="number" value={(parseFloat(entry.litres || '0') * parseFloat(entry.ratePerLitre || '0')).toFixed(2)} readOnly className="bg-background/50 border-white/10 font-bold" />
                       </div>
                       <div className="space-y-2">
-                        <Label>{t('Odometer')}</Label>
+                        <Label>{t('Kilometer (Optional)')}</Label>
                         <Input type="number" value={entry.odometer} onChange={(e) => { const newEntries = [...entries]; newEntries[index].odometer = e.target.value; setEntries(newEntries); }} placeholder="km" className="bg-background/50 border-white/10" />
                       </div>
                     </div>

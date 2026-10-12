@@ -28,6 +28,11 @@ dist-ssr
 # SQLite database
 dev.db
 dev.db-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/prisma/
 
 # Environment variables
 .env

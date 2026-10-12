@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, MapPin, Edit, AlertTriangle, Trash2, Download, RefreshCw, TrendingUp, Filter, Printer, MoreVertical, Send } from 'lucide-react';
+import { Plus, Search, MapPin, Edit, AlertTriangle, Trash2, Download, RefreshCw, TrendingUp, Filter, Printer, MoreVertical, Send, IndianRupee, Truck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { 
   Table, 
@@ -30,13 +30,18 @@ import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { TripReportView } from '@/components/TripReportView';
 import { BiltyView } from '@/components/BiltyView';
 import { processCSVImport, CSV_HEADERS } from '@/lib/csvImport';
-import { generatePdf, sendWhatsAppPdf } from '@/lib/services';
+import { generatePdf, generatePdfBase64 } from '@/lib/services';
 import { formatCurrency } from '@/lib/utils';
+import { calcTripNetProfit, calcTripBalance, calcTotalFreight, calcTotalNetProfit, calcTotalOutstanding, calcProfitMargin, calcTripTotalRevenue } from '@/lib/calculations';
 import { TripForm } from './TripForm';
 import { TripSettleForm } from './TripSettleForm';
 import type { TripFormValues } from './schema';
 import type { Trip, Vehicle, Driver, Party } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { toast } from 'sonner';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
+import { WhatsAppMessageComposer } from '@/components/whatsapp/WhatsAppMessageComposer';
+import type { WhatsAppAttachment, TemplateType } from '@/components/whatsapp/WhatsAppMessageComposer';
 
 type TripWithRelations = Trip & { vehicle: Vehicle | null, driver: Driver | null, party: Party | null };
 
@@ -55,11 +60,31 @@ export default function Trips() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isSettleOpen, setIsSettleOpen] = useState(false);
   const [isLrOpen, setIsLrOpen] = useState(false);
-  const [isSendingWA, setIsSendingWA] = useState(false);
   const [isSendExcelOpen, setIsSendExcelOpen] = useState(false);
   const [excelPhone, setExcelPhone] = useState('');
   const [isSendingExcel, setIsSendingExcel] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<TripWithRelations | null>(null);
+
+  // WhatsApp Composer State
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerProps, setComposerProps] = useState<{
+    recipientName: string;
+    phone: string;
+    defaultTemplate: TemplateType;
+    tripData?: any;
+    attachment?: WhatsAppAttachment | null;
+    relatedId?: string;
+  }>({
+    recipientName: '',
+    phone: '',
+    defaultTemplate: 'Trip Update'
+  });
+
+  // Receive Balance Payment state
+  const [isReceiveBalanceOpen, setIsReceiveBalanceOpen] = useState(false);
+  const [balanceAmountReceiving, setBalanceAmountReceiving] = useState('0');
+  const [balanceCommission, setBalanceCommission] = useState('0');
+  const [balanceNotes, setBalanceNotes] = useState('');
 
   const { data: trips = [], isLoading, refetch } = usePrismaQuery<TripWithRelations[]>(
     ['trips', 'all'],
@@ -83,7 +108,7 @@ export default function Trips() {
 
   const generateNextTripNo = () => {
     if (trips.length === 0) return 'TRP-1001';
-    const numbers = trips.map(t => parseInt(t.tripNo.replace('TRP-', ''))).filter(num => !isNaN(num));
+    const numbers = trips.map(t => parseInt((t.tripNo || '').replace(/[^0-9]/g, ''))).filter(num => !isNaN(num));
     if (numbers.length === 0) return 'TRP-1001';
     return `TRP-${Math.max(...numbers) + 1}`;
   };
@@ -95,28 +120,59 @@ export default function Trips() {
 
   const handleCreate = (data: TripFormValues) => {
     const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, liquidEntries, tripLinks, ...restData } = data;
+    const tripNo = data.tripNo || generateNextTripNo();
+    const tripDate = data.tripDate ? new Date(data.tripDate) : new Date();
+
+    const toll = tollEntries.length > 0 ? tollEntries.reduce((s, t) => s + (Number(t.amount) || 0), 0) : (Number(data.toll) || 0);
+    const dieselAmount = dieselEntries.length > 0 ? dieselEntries.reduce((s, d) => s + (Number(d.totalCost) || 0), 0) : (Number(data.dieselAmount) || 0);
+    const maintenance = maintenanceEntries.length > 0 ? maintenanceEntries.reduce((s, m) => s + (Number(m.amount) || 0), 0) : (Number(data.maintenance) || 0);
+    const liquidDiesel = liquidEntries.length > 0 ? liquidEntries.reduce((s, l) => s + (Number(l.totalCost) || 0), 0) : (Number(data.liquidDiesel) || 0);
+    const driverAdvance = driverAdvances.length > 0 ? driverAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0) : (Number(data.driverAdvance) || 0);
+    const driverCash = Number(data.driverCash) || 0;
+
     createMutation.mutate({
       data: {
         ...restData,
-        tripDate: new Date(data.tripDate),
+        toll,
+        dieselAmount,
+        maintenance,
+        liquidDiesel,
+        driverAdvance,
+        driverCash,
+        freightAmount: Number(data.freightAmount) || 0,
+        commission: Number(data.commission) || 0,
+        partyAdvance: Number(data.partyAdvance) || 0,
+        extraCharges: Number(data.extraCharges) || 0,
+        extraRunning: Number(data.extraRunning) || 0,
+        labourCharges: Number(data.labourCharges) || 0,
+        permissionCharges: Number(data.permissionCharges) || 0,
+        tripNo,
+        tripDate,
+        vehicleId: data.vehicleId || null,
+        partyId: data.partyId || null,
+        driverId: data.driverId || null,
+        from: data.from || null,
+        to: data.to || null,
         loadingDate: data.loadingDate ? new Date(data.loadingDate) : null,
         unloadingDate: data.unloadingDate ? new Date(data.unloadingDate) : null,
         reportDate: data.reportDate ? new Date(data.reportDate) : null,
-        driverId: data.driverId || null,
-        balance: data.freightAmount - data.partyAdvance,
-        directDrivers: { create: directDrivers.map(d => ({ driverName: d.driverName })) },
-        driverAdvances: { create: driverAdvances.map(a => ({ amount: a.amount, date: new Date(a.date), remarks: a.remarks })) },
-        driverChanges: { create: driverChanges.map(c => ({ previousDriverId: c.previousDriverId || null, newDriverId: c.newDriverId || null, changedAt: new Date(c.changedAt) })) },
-        tollEntries: { create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
-        maintenanceEntries: { create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
-        dieselEntries: { create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
-        liquidEntries: { create: liquidEntries.map(l => ({ litres: l.litres, ratePerLitre: l.ratePerLitre, totalCost: l.totalCost, date: new Date(l.date) })) },
-        tripLinks: { create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
+        balance: calcTripBalance({ freightAmount: data.freightAmount, extraCharges: data.extraCharges, partyAdvance: data.partyAdvance }),
+        directDrivers: directDrivers.length > 0 ? { create: directDrivers.map(d => ({ driverName: d.driverName })) } : undefined,
+        driverAdvances: driverAdvances.length > 0 ? { create: driverAdvances.map(a => ({ amount: Number(a.amount) || 0, date: new Date(a.date), remarks: a.remarks })) } : undefined,
+        driverChanges: driverChanges.length > 0 ? { create: driverChanges.map(c => ({ previousDriverId: c.previousDriverId || null, newDriverId: c.newDriverId || null, changedAt: new Date(c.changedAt) })) } : undefined,
+        tollEntries: tollEntries.length > 0 ? { create: tollEntries.map(t => ({ tollName: t.tollName, amount: Number(t.amount) || 0, date: new Date(t.date), remarks: t.remarks })) } : undefined,
+        maintenanceEntries: maintenanceEntries.length > 0 ? { create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: Number(m.amount) || 0, date: new Date(m.date), remarks: m.remarks })) } : undefined,
+        dieselEntries: dieselEntries.length > 0 ? { create: dieselEntries.map(d => ({ fuelStation: d.fuelStation || null, litres: Number(d.litres) || 0, ratePerLitre: Number(d.ratePerLitre) || 0, totalCost: Number(d.totalCost) || 0, date: new Date(d.date), vehicleId: data.vehicleId || null })) } : undefined,
+        liquidEntries: liquidEntries.length > 0 ? { create: liquidEntries.map(l => ({ litres: Number(l.litres) || 0, ratePerLitre: Number(l.ratePerLitre) || 0, totalCost: Number(l.totalCost) || 0, date: new Date(l.date) })) } : undefined,
+        tripLinks: tripLinks.length > 0 ? { create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) } : undefined
       }
     }, {
       onSuccess: () => {
-        if (data.driverId) updateDriverMutation.mutate({ where: { id: data.driverId }, data: { status: 'On-Trip' } });
-        updateVehicleMutation.mutate({ where: { id: data.vehicleId }, data: { status: 'On-Trip' } });
+        // Only lock resources if status is beyond Draft and resources are assigned
+        if (data.status !== 'Draft') {
+          if (data.driverId) updateDriverMutation.mutate({ where: { id: data.driverId }, data: { status: 'On-Trip' } });
+          if (data.vehicleId) updateVehicleMutation.mutate({ where: { id: data.vehicleId }, data: { status: 'On-Trip' } });
+        }
         setIsNewOpen(false);
       }
     });
@@ -125,30 +181,69 @@ export default function Trips() {
   const handleUpdate = (data: TripFormValues) => {
     if (!selectedTrip) return;
     const { directDrivers, driverAdvances, driverChanges, tollEntries, maintenanceEntries, dieselEntries, liquidEntries, tripLinks, ...restData } = data;
+
+    const toll = tollEntries.length > 0 ? tollEntries.reduce((s, t) => s + (Number(t.amount) || 0), 0) : (Number(data.toll) || 0);
+    const dieselAmount = dieselEntries.length > 0 ? dieselEntries.reduce((s, d) => s + (Number(d.totalCost) || 0), 0) : (Number(data.dieselAmount) || 0);
+    const maintenance = maintenanceEntries.length > 0 ? maintenanceEntries.reduce((s, m) => s + (Number(m.amount) || 0), 0) : (Number(data.maintenance) || 0);
+    const liquidDiesel = liquidEntries.length > 0 ? liquidEntries.reduce((s, l) => s + (Number(l.totalCost) || 0), 0) : (Number(data.liquidDiesel) || 0);
+    const driverAdvance = driverAdvances.length > 0 ? driverAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0) : (Number(data.driverAdvance) || 0);
+    const driverCash = Number(data.driverCash) || 0;
+
     updateMutation.mutate({
       where: { id: selectedTrip.id },
       data: {
         ...restData,
-        tripDate: new Date(data.tripDate),
+        toll,
+        dieselAmount,
+        maintenance,
+        liquidDiesel,
+        driverAdvance,
+        driverCash,
+        freightAmount: Number(data.freightAmount) || 0,
+        commission: Number(data.commission) || 0,
+        partyAdvance: Number(data.partyAdvance) || 0,
+        extraCharges: Number(data.extraCharges) || 0,
+        extraRunning: Number(data.extraRunning) || 0,
+        labourCharges: Number(data.labourCharges) || 0,
+        permissionCharges: Number(data.permissionCharges) || 0,
+        tripDate: data.tripDate ? new Date(data.tripDate) : new Date(),
+        vehicleId: data.vehicleId || null,
+        partyId: data.partyId || null,
+        driverId: data.driverId || null,
+        from: data.from || null,
+        to: data.to || null,
         loadingDate: data.loadingDate ? new Date(data.loadingDate) : null,
         unloadingDate: data.unloadingDate ? new Date(data.unloadingDate) : null,
         reportDate: data.reportDate ? new Date(data.reportDate) : null,
-        driverId: data.driverId || null,
-        balance: data.freightAmount - data.partyAdvance,
+        balance: calcTripBalance({ freightAmount: data.freightAmount, extraCharges: data.extraCharges, partyAdvance: data.partyAdvance }),
         directDrivers: { deleteMany: {}, create: directDrivers.map(d => ({ driverName: d.driverName })) },
-        driverAdvances: { deleteMany: {}, create: driverAdvances.map(a => ({ amount: a.amount, date: new Date(a.date), remarks: a.remarks })) },
+        driverAdvances: { deleteMany: {}, create: driverAdvances.map(a => ({ amount: Number(a.amount) || 0, date: new Date(a.date), remarks: a.remarks })) },
         driverChanges: { deleteMany: {}, create: driverChanges.map(c => ({ previousDriverId: c.previousDriverId || null, newDriverId: c.newDriverId || null, changedAt: new Date(c.changedAt) })) },
-        tollEntries: { deleteMany: {}, create: tollEntries.map(t => ({ tollName: t.tollName, amount: t.amount, date: new Date(t.date), remarks: t.remarks })) },
-        maintenanceEntries: { deleteMany: {}, create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: m.amount, date: new Date(m.date), remarks: m.remarks })) },
-        dieselEntries: { deleteMany: {}, create: dieselEntries.map(d => ({ fuelStation: d.fuelStation, litres: d.litres, ratePerLitre: d.ratePerLitre, totalCost: d.totalCost, date: new Date(d.date), vehicleId: data.vehicleId })) },
-        liquidEntries: { deleteMany: {}, create: liquidEntries.map(l => ({ litres: l.litres, ratePerLitre: l.ratePerLitre, totalCost: l.totalCost, date: new Date(l.date) })) },
+        tollEntries: { deleteMany: {}, create: tollEntries.map(t => ({ tollName: t.tollName, amount: Number(t.amount) || 0, date: new Date(t.date), remarks: t.remarks })) },
+        maintenanceEntries: { deleteMany: {}, create: maintenanceEntries.map(m => ({ maintenanceType: m.maintenanceType, amount: Number(m.amount) || 0, date: new Date(m.date), remarks: m.remarks })) },
+        dieselEntries: { deleteMany: {}, create: dieselEntries.map(d => ({ fuelStation: d.fuelStation || null, litres: Number(d.litres) || 0, ratePerLitre: Number(d.ratePerLitre) || 0, totalCost: Number(d.totalCost) || 0, date: new Date(d.date), vehicleId: data.vehicleId || null })) },
+        liquidEntries: { deleteMany: {}, create: liquidEntries.map(l => ({ litres: Number(l.litres) || 0, ratePerLitre: Number(l.ratePerLitre) || 0, totalCost: Number(l.totalCost) || 0, date: new Date(l.date) })) },
         tripLinks: { deleteMany: {}, create: tripLinks.map(l => ({ url: l.url, description: l.description, date: new Date(l.date) })) }
       }
     }, {
       onSuccess: () => {
-        if (data.podStatus === 'Received' && data.paymentStatus === 'Paid') {
+        // Release resources when trip is completed/cancelled
+        if (data.status === 'Completed' || data.status === 'Cancelled') {
           if (selectedTrip.driverId) updateDriverMutation.mutate({ where: { id: selectedTrip.driverId }, data: { status: 'Active' } });
-          updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+          if (selectedTrip.vehicleId) updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+        } else if (data.status !== 'Draft') {
+          if (selectedTrip.driverId && selectedTrip.driverId !== data.driverId) {
+            updateDriverMutation.mutate({ where: { id: selectedTrip.driverId }, data: { status: 'Active' } });
+          }
+          if (data.driverId) {
+            updateDriverMutation.mutate({ where: { id: data.driverId }, data: { status: 'On-Trip' } });
+          }
+          if (selectedTrip.vehicleId && selectedTrip.vehicleId !== data.vehicleId) {
+            updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+          }
+          if (data.vehicleId) {
+            updateVehicleMutation.mutate({ where: { id: data.vehicleId }, data: { status: 'On-Trip' } });
+          }
         }
         setIsEditOpen(false);
       }
@@ -174,9 +269,37 @@ export default function Trips() {
     }, {
       onSuccess: () => {
         if (selectedTrip.driverId) updateDriverMutation.mutate({ where: { id: selectedTrip.driverId }, data: { status: 'Active' } });
-        updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+        if (selectedTrip.vehicleId) updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+        toast.success(t('Trip completed successfully. Balance payment remains pending.'));
         setIsSettleOpen(false);
       }
+    });
+  };
+
+  const handleReceiveBalance = () => {
+    if (!selectedTrip) return;
+    const amtReceiving = parseFloat(balanceAmountReceiving) || 0;
+    const commissionAmt = parseFloat(balanceCommission) || 0;
+    const balanceDue = calcTripBalance(selectedTrip);
+    const newPaymentStatus = amtReceiving >= balanceDue ? 'Paid' : (amtReceiving > 0 ? 'Partial' : 'Pending');
+    
+    updateMutation.mutate({
+      where: { id: selectedTrip.id },
+      data: {
+        paymentStatus: newPaymentStatus,
+        commission: commissionAmt,
+        balance: Math.max(0, balanceDue - amtReceiving),
+        notes: balanceNotes ? `${selectedTrip.notes || ''}\n[Balance] ${balanceNotes}` : selectedTrip.notes,
+      }
+    }, {
+      onSuccess: () => {
+        toast.success(newPaymentStatus === 'Paid' ? t('Balance received! Trip marked as Paid.') : t('Partial balance recorded.'));
+        setIsReceiveBalanceOpen(false);
+        setBalanceAmountReceiving('0');
+        setBalanceCommission('0');
+        setBalanceNotes('');
+      },
+      onError: (err: any) => toast.error(t('Failed to record balance: ') + err.message)
     });
   };
 
@@ -185,29 +308,46 @@ export default function Trips() {
     deleteMutation.mutate({ where: { id: selectedTrip.id } }, {
       onSuccess: () => {
         if (selectedTrip.driverId) updateDriverMutation.mutate({ where: { id: selectedTrip.driverId }, data: { status: 'Active' } });
-        updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
+        if (selectedTrip.vehicleId) updateVehicleMutation.mutate({ where: { id: selectedTrip.vehicleId }, data: { status: 'Active' } });
         setIsDeleteOpen(false);
       }
     });
   };
 
-  const calcNetProfit = (trip: any) => {
-    return (trip.freightAmount || 0) - (trip.commission || 0) - (trip.dieselAmount || 0) - (trip.liquidDiesel || 0) - (trip.driverCash || 0) - (trip.toll || 0) - (trip.maintenance || 0) - (trip.extraRunning || 0) - (trip.extraCharges || 0) - (trip.selfExpenses || 0);
-  };
-
-  const handleSendWALr = async (trip: TripWithRelations) => {
-    const phone = trip.party?.phone;
-    if (!phone) {
-      alert("No phone number registered for the party associated with this trip.");
-      return;
-    }
+  const handleOpenTripWhatsApp = async (
+    trip: TripWithRelations,
+    template: TemplateType = 'Trip Update',
+    isLR: boolean = false
+  ) => {
     setSelectedTrip(trip);
-    setIsSendingWA(true);
-    setTimeout(async () => {
-      const caption = `Dear ${trip.party?.companyName},\n\nPlease find attached the Lorry Receipt (LR) for the trip from ${trip.from} to ${trip.to}.\nVehicle: ${trip.vehicle?.vehicleNumber}\n\nThank you!`;
-      await sendWhatsAppPdf(phone, '#hidden-wa-lr-capture .print-lr-container', `LR_${trip.tripNo}.pdf`, caption);
-      setIsSendingWA(false);
-    }, 500);
+    const recipientName = trip.party?.companyName || 'Valued Client';
+    const phone = trip.party?.phone || trip.driver?.mobileNumber || '';
+
+    let attachment: WhatsAppAttachment | null = null;
+    if (isLR) {
+      try {
+        const base64 = await generatePdfBase64('#hidden-wa-lr-capture .print-lr-container');
+        if (base64) {
+          attachment = {
+            filename: `LR_${trip.tripNo}.pdf`,
+            mimetype: 'application/pdf',
+            base64Data: base64
+          };
+        }
+      } catch (e) {
+        console.warn('Could not generate LR PDF attachment:', e);
+      }
+    }
+
+    setComposerProps({
+      recipientName,
+      phone,
+      defaultTemplate: template,
+      tripData: trip,
+      attachment,
+      relatedId: trip.id
+    });
+    setComposerOpen(true);
   };
 
   const handleSaveAsPDF = async () => {
@@ -250,12 +390,12 @@ export default function Trips() {
       t.extraRunning,
       t.detentionTime || '',
       t.extraCharges,
-      calcNetProfit(t),
+      calcTripNetProfit(t),
       t.podStatus,
       t.paymentStatus,
       t.notes || ''
     ]);
-    const csvContent = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\\n');
+    const csvContent = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -267,7 +407,7 @@ export default function Trips() {
 
   const handleSendExcelWA = async () => {
     if (!excelPhone) {
-      alert("Please enter a phone number");
+      toast.error("Please enter a phone number");
       return;
     }
     setIsSendingExcel(true);
@@ -299,7 +439,7 @@ export default function Trips() {
       t.extraRunning,
       t.detentionTime || '',
       t.extraCharges,
-      calcNetProfit(t),
+      calcTripNetProfit(t),
       t.podStatus,
       t.paymentStatus,
       t.notes || ''
@@ -318,14 +458,14 @@ export default function Trips() {
       });
 
       if (res && res.error) {
-        alert('Error sending WhatsApp message: ' + res.error);
+        toast.error('Error sending WhatsApp message: ' + res.error);
       } else {
-        alert('Report sent successfully!');
+        toast.success('Report sent successfully!');
         setIsSendExcelOpen(false);
         setExcelPhone('');
       }
     } catch (err: any) {
-      alert('WhatsApp send failed: ' + err.message);
+      toast.error('WhatsApp send failed: ' + err.message);
     }
     
     setIsSendingExcel(false);
@@ -336,28 +476,34 @@ export default function Trips() {
     if (!file) return;
     e.target.value = '';
     processCSVImport(file, () => {
-      alert('Import successful!');
+      toast.success('Import successful!');
       refetch();
     }, (err) => {
-      alert(`Import failed: ${err}`);
+      toast.error(`Import failed: ${err}`);
     });
   };
 
   const filteredTrips = trips.filter(trip => {
-    const matchesSearch = 
-      trip.tripNo.toLowerCase().includes(search.toLowerCase()) ||
-      trip.vehicle?.vehicleNumber.toLowerCase().includes(search.toLowerCase()) ||
-      trip.party?.companyName.toLowerCase().includes(search.toLowerCase()) ||
-      trip.from.toLowerCase().includes(search.toLowerCase()) ||
-      trip.to.toLowerCase().includes(search.toLowerCase());
+    const searchLower = search.toLowerCase();
+    const matchesSearch = !search ||
+      trip.tripNo.toLowerCase().includes(searchLower) ||
+      trip.vehicle?.vehicleNumber?.toLowerCase().includes(searchLower) ||
+      trip.party?.companyName?.toLowerCase().includes(searchLower) ||
+      (trip.from || '').toLowerCase().includes(searchLower) ||
+      (trip.to || '').toLowerCase().includes(searchLower);
 
     if (!matchesSearch) return false;
 
-    if (statusFilter === 'pending_pod') return trip.podStatus === 'Pending';
-    if (statusFilter === 'pending_payment') return trip.paymentStatus === 'Pending' || trip.paymentStatus === 'Partial';
-    if (statusFilter === 'completed') return trip.podStatus === 'Received' && trip.paymentStatus === 'Paid';
-    if (statusFilter === 'overdue') return trip.podStatus === 'Pending' && (new Date().getTime() - new Date(trip.tripDate).getTime() > 5 * 24 * 60 * 60 * 1000);
+    // Status filter
+    let matchesStatus = true;
+    if (statusFilter === 'pending_pod') matchesStatus = trip.podStatus === 'Pending';
+    else if (statusFilter === 'pending_payment') matchesStatus = trip.paymentStatus === 'Pending' || trip.paymentStatus === 'Partial';
+    else if (statusFilter === 'completed') matchesStatus = trip.status === 'Completed';
+    else if (statusFilter === 'overdue') matchesStatus = trip.podStatus === 'Pending' && (new Date().getTime() - new Date(trip.tripDate).getTime() > 5 * 24 * 60 * 60 * 1000);
     
+    if (!matchesStatus) return false;
+
+    // Date filter — applied for ALL status tabs
     if (dateFilter !== 'All') {
       const tripD = new Date(trip.tripDate);
       const now = new Date();
@@ -371,10 +517,10 @@ export default function Trips() {
     return true;
   });
 
-  const totalFreight = filteredTrips.reduce((acc, t) => acc + (t.freightAmount || 0), 0);
-  const totalOutstanding = filteredTrips.filter(t => t.paymentStatus !== 'Paid').reduce((acc, t) => acc + (t.freightAmount - (t.partyAdvance || 0)), 0);
-  const totalNetProfit = filteredTrips.reduce((acc, t) => acc + calcNetProfit(t), 0);
-  const marginPercent = totalFreight > 0 ? ((totalNetProfit / totalFreight) * 100).toFixed(1) : '0.0';
+  const totalFreight = calcTotalFreight(filteredTrips);
+  const totalNetProfit = calcTotalNetProfit(filteredTrips);
+  const totalOutstanding = calcTotalOutstanding(filteredTrips);
+  const marginPercent = calcProfitMargin(totalFreight, totalNetProfit);
 
   return (
     <div className="space-y-6">
@@ -506,7 +652,32 @@ export default function Trips() {
                   </TableHeader>
                   <TableBody>
                     {filteredTrips.length === 0 ? (
-                      <TableRow><TableCell colSpan={7} className="text-center h-32 text-muted-foreground">{t('No trips found for current filters.')}</TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12">
+                          <div className="flex flex-col items-center justify-center space-y-3">
+                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                              <Truck className="h-6 w-6" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-semibold text-base">{t('No trips found')}</p>
+                              <p className="text-xs text-muted-foreground max-w-sm">
+                                {search || statusFilter !== 'all' || dateFilter !== 'All' 
+                                  ? t('No trips match your filter criteria. Try adjusting filters or search query.') 
+                                  : t('Start by dispatching your first trip.')}
+                              </p>
+                            </div>
+                            {search || statusFilter !== 'all' || dateFilter !== 'All' ? (
+                              <Button variant="outline" size="sm" onClick={() => { setSearch(''); setStatusFilter('all'); setDateFilter('All'); }} className="mt-2 text-xs border-white/10">
+                                {t('Clear Filters')}
+                              </Button>
+                            ) : (
+                              <Button size="sm" onClick={handleOpenNew} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90 text-xs">
+                                <Plus className="h-3.5 w-3.5 mr-1" /> {t('Create First Trip')}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       filteredTrips.map((trip) => (
                         <TableRow key={trip.id} className="border-white/10 hover:bg-white/5">
@@ -522,21 +693,21 @@ export default function Trips() {
                           <TableCell>
                             <div className="flex items-center space-x-1 text-sm">
                               <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="font-medium">{trip.from}</span>
+                              <span className="font-medium">{trip.from || '—'}</span>
                             </div>
                             <div className="flex items-center space-x-1 text-sm mt-1">
                               <MapPin className="h-3 w-3 text-primary" />
-                              <span className="font-medium">{trip.to}</span>
+                              <span className="font-medium">{trip.to || '—'}</span>
                             </div>
                           </TableCell>
                           <TableCell className="max-w-[150px] truncate">{trip.party?.companyName}</TableCell>
                           <TableCell>
                             <div className="text-sm font-semibold">{formatCurrency(trip.freightAmount)}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{t('Net:')} <span className={calcNetProfit(trip) >= 0 ? 'text-green-500' : 'text-red-500'}>{formatCurrency(calcNetProfit(trip))}</span></div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{t('Net:')} <span className={calcTripNetProfit(trip) >= 0 ? 'text-green-500' : 'text-red-500'}>{formatCurrency(calcTripNetProfit(trip))}</span></div>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1 items-start">
-                              <Badge variant="outline" className={`text-[10px] ${trip.status === 'Completed' ? 'border-green-500/30 text-green-500 bg-green-500/10' : 'border-blue-500/30 text-blue-500 bg-blue-500/10'}`}>{trip.status}</Badge>
+                              <Badge variant="outline" className={`text-[10px] ${trip.status === 'Completed' ? 'border-green-500/30 text-green-500 bg-green-500/10' : trip.status === 'Draft' ? 'border-slate-500/30 text-slate-400 bg-slate-500/10' : trip.status === 'Cancelled' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-blue-500/30 text-blue-500 bg-blue-500/10'}`}>{trip.status}</Badge>
                               {trip.podStatus === 'Pending' && <Badge variant="outline" className="text-[10px] border-orange-500/30 text-orange-500 bg-orange-500/10">{t('POD Pending')}</Badge>}
                               {trip.paymentStatus !== 'Paid' && <Badge variant="outline" className="text-[10px] border-red-500/30 text-red-500 bg-red-500/10">{t('Pmt Pending')}</Badge>}
                             </div>
@@ -546,13 +717,17 @@ export default function Trips() {
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-white/10"><span className="sr-only">Open menu</span><MoreVertical className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-[180px] glass-panel border-white/10">
+                              <DropdownMenuContent align="end" className="w-[200px] glass-panel border-white/10">
                                 <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsEditOpen(true); }} className="hover:bg-white/10 cursor-pointer"><Edit className="mr-2 h-4 w-4" /> {t('Edit Details')}</DropdownMenuItem>
                                 {trip.status !== 'Completed' && (
-                                  <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsSettleOpen(true); }} className="hover:bg-green-500/20 text-green-400 focus:text-green-400 cursor-pointer"><RefreshCw className="mr-2 h-4 w-4" /> {t('Settle Trip')}</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsSettleOpen(true); }} className="hover:bg-green-500/20 text-green-400 focus:text-green-400 cursor-pointer"><RefreshCw className="mr-2 h-4 w-4" /> {t('Complete Trip')}</DropdownMenuItem>
+                                )}
+                                {trip.status === 'Completed' && trip.paymentStatus !== 'Paid' && (
+                                  <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setBalanceCommission(String(trip.commission || 0)); setIsReceiveBalanceOpen(true); }} className="hover:bg-blue-500/20 text-blue-400 focus:text-blue-400 cursor-pointer"><IndianRupee className="mr-2 h-4 w-4" /> {t('Receive Balance')}</DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsLrOpen(true); }} className="hover:bg-white/10 cursor-pointer"><Printer className="mr-2 h-4 w-4" /> {t('View Bilty/LR')}</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleSendWALr(trip)} className="hover:bg-green-500/20 text-green-400 focus:text-green-400 cursor-pointer"><Send className="mr-2 h-4 w-4" /> {t('Send LR on WA')}</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleOpenTripWhatsApp(trip, 'Trip Update', false)} className="hover:bg-green-500/20 text-green-400 focus:text-green-400 cursor-pointer"><Send className="mr-2 h-4 w-4" /> {t('Send Trip Update')}</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleOpenTripWhatsApp(trip, 'Trip Update', true)} className="hover:bg-green-500/20 text-green-400 focus:text-green-400 cursor-pointer"><Printer className="mr-2 h-4 w-4" /> {t('Send LR on WhatsApp')}</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { setSelectedTrip(trip); setIsDeleteOpen(true); }} className="hover:bg-red-500/20 text-red-400 focus:text-red-400 cursor-pointer"><Trash2 className="mr-2 h-4 w-4" /> {t('Delete Trip')}</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -570,7 +745,7 @@ export default function Trips() {
 
       {/* Modals */}
       <Dialog open={isNewOpen} onOpenChange={setIsNewOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[850px] max-h-[90vh] flex flex-col overflow-hidden p-6">
           <DialogHeader>
             <DialogTitle>{t('New Trip Dispatch')}</DialogTitle>
             <DialogDescription>{t('Create a new trip, assign vehicle, and set freight details.')}</DialogDescription>
@@ -589,7 +764,7 @@ export default function Trips() {
       </Dialog>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[850px] max-h-[90vh] flex flex-col overflow-hidden p-6">
           <DialogHeader>
             <DialogTitle>{t('Edit Trip —')} {selectedTrip?.tripNo}</DialogTitle>
             <DialogDescription>{t('Update financials, status, and tracking details.')}</DialogDescription>
@@ -626,6 +801,57 @@ export default function Trips() {
         </DialogContent>
       </Dialog>
 
+      {/* Receive Balance Payment Dialog */}
+      <Dialog open={isReceiveBalanceOpen} onOpenChange={setIsReceiveBalanceOpen}>
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>{t('Receive Balance Payment —')} {selectedTrip?.tripNo}</DialogTitle>
+            <DialogDescription>{t('Record balance payment received from the party.')}</DialogDescription>
+          </DialogHeader>
+          {selectedTrip && (() => {
+            const totalFreight = calcTripTotalRevenue(selectedTrip);
+            const advance = Number(selectedTrip.partyAdvance) || 0;
+            const balanceDue = calcTripBalance(selectedTrip);
+            const commAmt = parseFloat(balanceCommission) || 0;
+            const receiving = parseFloat(balanceAmountReceiving) || 0;
+            const netReceivable = balanceDue - commAmt;
+            return (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2 bg-white/5 p-4 rounded-lg border border-white/10">
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('Total Freight')}</span><span className="font-bold text-primary">{formatCurrency(totalFreight)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('Advance Received')}</span><span className="font-medium text-green-500">{formatCurrency(advance)}</span></div>
+                  <div className="flex justify-between text-sm border-t border-white/10 pt-2"><span className="font-medium text-orange-400">{t('Balance Due')}</span><span className="font-bold text-orange-500">{formatCurrency(balanceDue)}</span></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{t('Amount Receiving Now (₹)')}</label>
+                    <Input type="number" value={balanceAmountReceiving} onChange={(e) => setBalanceAmountReceiving(e.target.value)} className="bg-background/50 border-white/10" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{t('Commission to Deduct (₹)')}</label>
+                    <Input type="number" value={balanceCommission} onChange={(e) => setBalanceCommission(e.target.value)} className="bg-background/50 border-white/10" />
+                  </div>
+                </div>
+                <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">{t('Net Receivable (after commission)')}</span>
+                  <span className="text-lg font-bold text-primary">{formatCurrency(netReceivable)}</span>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('Notes')}</label>
+                  <Input value={balanceNotes} onChange={(e) => setBalanceNotes(e.target.value)} placeholder={t('e.g. Cheque #1234, NEFT ref...')} className="bg-background/50 border-white/10" />
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="ghost" onClick={() => setIsReceiveBalanceOpen(false)}>{t('Cancel')}</Button>
+                  <Button onClick={handleReceiveBalance} disabled={updateMutation.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                    {updateMutation.isPending ? t('Recording...') : (receiving >= balanceDue ? t('Receive & Mark Paid') : t('Record Partial Payment'))}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
           <DialogHeader>
@@ -650,9 +876,15 @@ export default function Trips() {
               <p className="text-sm text-muted-foreground">{selectedTrip?.tripNo}</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setIsLrOpen(false); if (selectedTrip) handleSendWALr(selectedTrip); }} disabled={isSendingWA} className="border-green-500/50 text-green-400 hover:bg-green-500/10">
-                <Send className="w-4 h-4 mr-2" /> {isSendingWA ? t('Sending...') : t('Send WhatsApp')}
-              </Button>
+              <WhatsAppButton
+                variant="secondary"
+                onClick={() => {
+                  setIsLrOpen(false);
+                  if (selectedTrip) handleOpenTripWhatsApp(selectedTrip, 'Trip Update', true);
+                }}
+              >
+                {t('Send WhatsApp')}
+              </WhatsAppButton>
               <Button variant="outline" onClick={handleSaveLrAsPDF} disabled={isGeneratingPdf} className="border-white/10">
                 <Download className="w-4 h-4 mr-2" /> {isGeneratingPdf ? t('Generating...') : t('Save PDF')}
               </Button>
@@ -716,6 +948,18 @@ export default function Trips() {
           {selectedTrip && <BiltyView trip={selectedTrip} />}
         </div>
       </div>
+
+      {/* Unified Professional WhatsApp Message Composer */}
+      <WhatsAppMessageComposer
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        recipientName={composerProps.recipientName}
+        phone={composerProps.phone}
+        defaultTemplate={composerProps.defaultTemplate}
+        tripData={composerProps.tripData}
+        attachment={composerProps.attachment}
+        relatedId={composerProps.relatedId}
+      />
     </div>
   );
 }

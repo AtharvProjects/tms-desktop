@@ -6,6 +6,7 @@ import {
   LayoutDashboard, 
   Truck, 
   Users, 
+  Building2,
   Fuel, 
   Receipt, 
   FileText, 
@@ -16,17 +17,12 @@ import {
   Wallet,
   BookOpen
 } from 'lucide-react'
-import { clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { cn } from '@/lib/utils'
 import { usePreferences } from '../contexts/PreferencesContext'
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs))
-}
 
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { name: 'Parties', path: '/parties', icon: Users },
+  { name: 'Parties', path: '/parties', icon: Building2 },
   { name: 'Drivers', path: '/drivers', icon: Users },
   { name: 'Vehicles', path: '/vehicles', icon: Car },
   { name: 'Trips', path: '/trips', icon: Truck },

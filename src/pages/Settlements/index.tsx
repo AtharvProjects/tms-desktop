@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePrismaQuery, usePrismaMutation } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
+import { calcDriverSettlementBalance } from '@/lib/calculations';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 export default function Settlements() {
   const { t } = usePreferences();
@@ -39,39 +41,7 @@ export default function Settlements() {
 
   const createSettlement = usePrismaMutation<any, any>('driverSettlement', 'create', [['settlements', 'drivers']]);
 
-  const calculateDriverBalance = (driver: any) => {
-    let companyOwesDriver = 0; // Dene
-    let driverOwesCompany = 0; // Ghene
-
-    // Calculate from trips
-    driver.trips?.forEach((trip: any) => {
-      companyOwesDriver += trip.commission || 0; // Assuming commission acts as driver pay per trip
-      companyOwesDriver += trip.toll || 0;
-      companyOwesDriver += trip.maintenance || 0;
-      companyOwesDriver += trip.selfExpenses || 0;
-      
-      driverOwesCompany += trip.driverAdvance || 0;
-      driverOwesCompany += trip.driverCash || 0;
-      driverOwesCompany += trip.driverSavings || 0;
-      
-      // Nested arrays
-      trip.tollEntries?.forEach((t: any) => companyOwesDriver += t.amount);
-      trip.maintenanceEntries?.forEach((m: any) => companyOwesDriver += m.amount);
-      trip.driverAdvances?.forEach((a: any) => driverOwesCompany += a.amount);
-    });
-
-    // Standalone driver advances
-    driver.advances?.forEach((a: any) => driverOwesCompany += a.amount);
-
-    // Settlements previously made
-    driver.settlements?.forEach((s: any) => {
-      companyOwesDriver += s.amountReceived; // Company received money from driver (reduces driver debt)
-      driverOwesCompany += s.amountGiven;    // Company gave money to driver (increases driver debt)
-    });
-
-    const netBalance = companyOwesDriver - driverOwesCompany;
-    return netBalance; // Positive = Company owes driver (Dene), Negative = Driver owes company (Ghene)
-  };
+  const calculateDriverBalance = (driver: any) => calcDriverSettlementBalance(driver);
 
   const filteredDrivers = drivers.filter(d => d.driverName.toLowerCase().includes(search.toLowerCase()));
 
@@ -88,11 +58,13 @@ export default function Settlements() {
       }
     }, {
       onSuccess: () => {
+        toast.success(t('Settlement recorded successfully'));
         setIsSettleOpen(false);
         setAmountGiven('');
         setAmountReceived('');
         setRemarks('');
-      }
+      },
+      onError: (err: any) => toast.error(t('Failed to record settlement: ') + err.message)
     });
   };
 

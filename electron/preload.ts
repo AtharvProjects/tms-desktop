@@ -10,25 +10,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     printToPdf: (htmlContent: string) => ipcRenderer.invoke('app:printToPdf', htmlContent),
     saveImage: (args: { base64Data: string, filename: string, subfolder?: string }) => ipcRenderer.invoke('app:saveImage', args),
     backup: () => ipcRenderer.invoke('app:backup'),
-    restore: () => ipcRenderer.invoke('app:restore')
+    restore: () => ipcRenderer.invoke('app:restore'),
+    resetDatabase: () => ipcRenderer.invoke('app:resetDatabase')
   },
   whatsapp: {
-    init: () => ipcRenderer.invoke('whatsapp:init'),
+    init: (forceFresh?: boolean) => ipcRenderer.invoke('whatsapp:init', forceFresh),
     getStatus: () => ipcRenderer.invoke('whatsapp:status'),
-    getLastQr: () => ipcRenderer.invoke('whatsapp:lastQr'),
-    send: (phone: string, text: string) => ipcRenderer.invoke('whatsapp:send', { phone, text }),
-    sendMedia: (args: { phone: string, caption?: string, base64Data: string, mimetype: string, filename: string }) => 
-      ipcRenderer.invoke('whatsapp:sendMedia', args),
     disconnect: () => ipcRenderer.invoke('whatsapp:disconnect'),
-    onQr: (callback: (qr: string) => void) => {
-      const listener = (_: any, qr: string) => callback(qr);
-      ipcRenderer.on('whatsapp:qr', listener);
-      return () => {
-        ipcRenderer.removeListener('whatsapp:qr', listener);
-      };
+    send: (argsOrPhone: any, text?: string) => {
+      const payload = typeof argsOrPhone === 'string' ? { phone: argsOrPhone, text: text || '' } : argsOrPhone;
+      return ipcRenderer.invoke('whatsapp:send', payload);
     },
-    onStatus: (callback: (status: string) => void) => {
-      const listener = (_: any, status: string) => callback(status);
+    sendMedia: (args: { phone: string; caption?: string; base64Data: string; mimetype: string; filename: string; recipientName?: string; messageType?: string; relatedId?: string }) => 
+      ipcRenderer.invoke('whatsapp:sendMedia', args),
+    onStatus: (callback: (payload: any) => void) => {
+      const listener = (_: any, payload: any) => callback(payload);
       ipcRenderer.on('whatsapp:status', listener);
       return () => {
         ipcRenderer.removeListener('whatsapp:status', listener);

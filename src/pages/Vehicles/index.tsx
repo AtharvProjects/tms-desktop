@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Plus, Search, Car, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw, MoreVertical, Gauge } from 'lucide-react'
+import { Plus, Search, Car, Truck, User, ShieldAlert, Edit, Trash2, Wrench, RefreshCw, MoreVertical, Gauge, AlertTriangle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -116,7 +117,11 @@ export default function Vehicles() {
         notes: data.notes || null,
       }
     }, {
-      onSuccess: () => setIsOpen(false)
+      onSuccess: () => {
+        toast.success(t('Vehicle added successfully'))
+        setIsOpen(false)
+      },
+      onError: (err: any) => toast.error(t('Failed to add vehicle: ') + err.message)
     })
   }
 
@@ -135,14 +140,22 @@ export default function Vehicles() {
         notes: data.notes || null,
       }
     }, {
-      onSuccess: () => setIsEditOpen(false)
+      onSuccess: () => {
+        toast.success(t('Vehicle updated successfully'))
+        setIsEditOpen(false)
+      },
+      onError: (err: any) => toast.error(t('Failed to update vehicle: ') + err.message)
     })
   }
 
   const handleDelete = () => {
     if (!selectedVehicle) return
     deleteMutation.mutate({ where: { id: selectedVehicle.id } }, {
-      onSuccess: () => setIsDeleteOpen(false)
+      onSuccess: () => {
+        toast.success(t('Vehicle deleted successfully'))
+        setIsDeleteOpen(false)
+      },
+      onError: (err: any) => toast.error(t('Failed to delete vehicle: ') + err.message)
     })
   }
 
@@ -379,10 +392,18 @@ export default function Vehicles() {
 
       {/* Delete Dialog */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="glass-panel border-white/20 sm:max-w-[400px]">
+        <DialogContent className="glass-panel border-white/20 sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle className="text-red-500">{t('Delete Vehicle?')}</DialogTitle>
-            <DialogDescription>{t('Are you sure you want to permanently delete ')}<strong>{selectedVehicle?.vehicleNumber}</strong>{t('? This action cannot be undone.')}</DialogDescription>
+            <DialogTitle className="text-red-500 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              {t('Delete Vehicle?')}
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p>{t('Are you sure you want to permanently delete ')}<strong>{selectedVehicle?.vehicleNumber}</strong>{t('? This action cannot be undone.')}</p>
+              <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400 leading-relaxed">
+                {t('Warning: Deleting this vehicle will affect historical trips, diesel logs, and maintenance logs linked to this registration.')}
+              </div>
+            </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setIsDeleteOpen(false)}>{t('Cancel')}</Button>

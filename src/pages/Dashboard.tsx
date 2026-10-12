@@ -20,8 +20,10 @@ import {
 } from 'recharts';
 import { usePrismaQuery } from '@/hooks/usePrisma';
 import { formatCurrency } from '@/lib/utils';
+import { calcTripNetProfit, calcTotalNetProfit, getExpiryStatus } from '@/lib/calculations';
 import type { Vehicle, Party, Expense, DieselLog } from '@prisma/client';
 import { usePreferences } from '../contexts/PreferencesContext';
+import { toast } from 'sonner';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -79,18 +81,11 @@ export default function Dashboard() {
     return () => { window.removeEventListener('keydown', handleKeyDown); };
   }, [navigate]);
 
-  const isExpiredSoon = (dateStr: string | Date | null) => {
-    if (!dateStr) return false;
-    const exp = new Date(dateStr);
-    const diff = exp.getTime() - new Date().getTime();
-    return diff < 30 * 24 * 60 * 60 * 1000;
-  };
-
   const complianceAlerts = vehicles.filter(v => 
-    isExpiredSoon(v.insuranceExpiry) || 
-    isExpiredSoon(v.fitnessExpiry) || 
-    isExpiredSoon(v.pollutionExpiry) ||
-    isExpiredSoon(v.permitExpiry)
+    getExpiryStatus(v.insuranceExpiry) !== 'ok' || 
+    getExpiryStatus(v.fitnessExpiry) !== 'ok' || 
+    getExpiryStatus(v.pollutionExpiry) !== 'ok' ||
+    getExpiryStatus(v.permitExpiry) !== 'ok'
   );
 
   const unpaidInvoices = invoices.filter(i => i.status !== 'Paid');
@@ -98,8 +93,8 @@ export default function Dashboard() {
   // Pending POD logic (Overdue > 5 days)
   const pendingPODs = trips.filter(t => t.podStatus === 'Pending' && (new Date().getTime() - new Date(t.tripDate).getTime() > 5 * 24 * 60 * 60 * 1000));
   
-  // Today's active trips
-  const activeTrips = trips.filter(t => t.podStatus === 'Pending');
+  // Active trips — status is not Draft, Completed, or Cancelled
+  const activeTrips = trips.filter(t => t.status !== 'Draft' && t.status !== 'Completed' && t.status !== 'Cancelled');
 
   // Monthly stats calculations
   const now = new Date();
@@ -112,12 +107,9 @@ export default function Dashboard() {
 
   const thisMonthRevenue = thisMonthTrips.reduce((acc, t) => acc + (t.freightAmount || 0), 0);
   const lastMonthRevenue = lastMonthTrips.reduce((acc, t) => acc + (t.freightAmount || 0), 0);
-  
-  const thisMonthExpenses = expenses.filter(e => new Date(e.date) >= thisMonthStart).reduce((acc, e) => acc + (e.amount || 0), 0);
-  const thisMonthDiesel = dieselLogs.filter(d => new Date(d.date) >= thisMonthStart).reduce((acc, d) => acc + (d.totalCost || 0), 0);
-  
-  // Profit = Freight - Diesel - Expenses
-  const thisMonthProfit = thisMonthRevenue - thisMonthDiesel - thisMonthExpenses;
+
+  // Profit uses centralized formula (Freight - ALL trip costs)
+  const thisMonthProfit = calcTotalNetProfit(thisMonthTrips);
 
   const revenueGrowth = lastMonthRevenue === 0 ? 100 : ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
 
@@ -133,11 +125,8 @@ export default function Dashboard() {
       const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
       const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
       
-      const r = trips.filter(t => new Date(t.tripDate) >= mStart && new Date(t.tripDate) <= mEnd).reduce((acc, t) => acc + (t.freightAmount || 0), 0);
-      const dExp = dieselLogs.filter(log => new Date(log.date) >= mStart && new Date(log.date) <= mEnd).reduce((acc, l) => acc + (l.totalCost || 0), 0);
-      const oExp = expenses.filter(exp => new Date(exp.date) >= mStart && new Date(exp.date) <= mEnd).reduce((acc, e) => acc + (e.amount || 0), 0);
-      
-      const p = r - dExp - oExp;
+      const r = trips.filter(t => new Date(t.tripDate) >= mStart && new Date(t.tripDate) <= mEnd).reduce((acc: number, t: any) => acc + (t.freightAmount || 0), 0);
+      const p = trips.filter(t => new Date(t.tripDate) >= mStart && new Date(t.tripDate) <= mEnd).reduce((acc: number, t: any) => acc + calcTripNetProfit(t), 0);
       data.push({ name: monthStr, revenue: r, profit: Math.max(0, p) });
     }
     return data;
@@ -145,22 +134,30 @@ export default function Dashboard() {
 
   const handleWhatsAppReminder = async (invoice: any) => {
     const phone = invoice.trip?.party?.phone;
-    if (!phone) { alert("No phone number registered for this party."); return; }
+    if (!phone) { toast.error("No phone number registered for this party."); return; }
     const text = `Dear ${invoice.trip.party.companyName},\n\nThis is a gentle reminder that invoice ${invoice.invoiceNumber} for Rs. ${invoice.totalAmount.toLocaleString('en-IN')} is still pending.\n\nPlease arrange for the payment at the earliest.\n\nThank you!`;
     
     if (window.electronAPI?.whatsapp) {
-      const isConnected = localStorage.getItem('whatsappConnected') === 'true';
-      if (isConnected) {
-        try {
-          const res = await window.electronAPI.whatsapp.send(phone, text);
-          if (res && res.error) { alert('Error sending WhatsApp reminder: ' + res.error); } 
-          else { alert(`WhatsApp reminder sent to ${invoice.trip.party.companyName}!`); }
-        } catch (err: any) { alert('WhatsApp send failed: ' + err.message); }
-        return;
+      try {
+        const res = await window.electronAPI.whatsapp.send({
+          phone,
+          text,
+          recipientName: invoice.trip.party.companyName,
+          messageType: 'Payment Reminder',
+          relatedId: invoice.id
+        });
+        if (res && res.error) { 
+          toast.error('Error sending WhatsApp reminder: ' + res.error); 
+        } else { 
+          toast.success(`WhatsApp reminder sent to ${invoice.trip.party.companyName}!`); 
+        }
+      } catch (err: any) { 
+        toast.error('WhatsApp send failed: ' + err.message); 
       }
+      return;
     }
     
-    alert("Please connect WhatsApp in Settings to send messages automatically.");
+    toast.warning("Please open the Desktop App window to send WhatsApp messages.");
   };
 
   return (

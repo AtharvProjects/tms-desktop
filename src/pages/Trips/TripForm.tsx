@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tripSchema } from './schema';
@@ -8,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
+import { calcTripNetProfit, calcTripBalance, calcTripTotalRevenue } from '@/lib/calculations';
 import type { Vehicle, Driver, Party } from '@prisma/client';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { Plus, Trash2 } from 'lucide-react';
@@ -25,7 +27,7 @@ interface TripFormProps {
 
 export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, onCancel, isSubmitting, isEdit }: TripFormProps) {
   const { t } = usePreferences();
-  const { register, control, handleSubmit, watch, formState: { errors } } = useForm<TripFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<TripFormValues>({
     resolver: zodResolver(tripSchema) as any,
     defaultValues: {
       tripNo: initialData?.tripNo || '',
@@ -38,7 +40,6 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       to: initialData?.to || '',
       material: initialData?.material || '',
       sizeWeight: initialData?.sizeWeight || '',
-      route: initialData?.route || '',
       billingType: initialData?.billingType || 'Fixed',
       freightAmount: initialData?.freightAmount || 0,
       dieselAmount: initialData?.dieselAmount || 0,
@@ -55,9 +56,9 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
       unloadingDate: initialData?.unloadingDate ? new Date(initialData.unloadingDate).toISOString().split('T')[0] : '',
       reportDate: initialData?.reportDate ? new Date(initialData.reportDate).toISOString().split('T')[0] : '',
       extraCharges: initialData?.extraCharges || 0,
-      driverSavings: initialData?.driverSavings || 0,
-      selfExpenses: initialData?.selfExpenses || 0,
-      status: initialData?.status || 'Scheduled',
+      labourCharges: initialData?.labourCharges || 0,
+      permissionCharges: initialData?.permissionCharges || 0,
+      status: initialData?.status || 'Draft',
       podStatus: initialData?.podStatus || 'Pending',
       paymentStatus: initialData?.paymentStatus || 'Pending',
       notes: initialData?.notes || '',
@@ -81,30 +82,108 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
   const { fields: liquidFields, append: appendLiquid, remove: removeLiquid } = useFieldArray({ control, name: 'liquidEntries' });
   const { fields: linkFields, append: appendLink, remove: removeLink } = useFieldArray({ control, name: 'tripLinks' });
 
-  const freightAmount = watch('freightAmount') || 0;
-  const partyAdvance = watch('partyAdvance') || 0;
-  const commission = watch('commission') || 0;
-  const dieselAmount = watch('dieselAmount') || 0;
-  const liquidDiesel = watch('liquidDiesel') || 0;
-  const driverCash = watch('driverCash') || 0;
-  const toll = watch('toll') || 0;
-  const maintenance = watch('maintenance') || 0;
-  const extraRunning = watch('extraRunning') || 0;
-  const extraCharges = watch('extraCharges') || 0;
-  const selfExpenses = watch('selfExpenses') || 0;
+  // Watched line-item entries
+  const watchedTollEntries = watch('tollEntries') || [];
+  const watchedDieselEntries = watch('dieselEntries') || [];
+  const watchedMaintEntries = watch('maintenanceEntries') || [];
+  const watchedLiquidEntries = watch('liquidEntries') || [];
+  const watchedDriverAdvances = watch('driverAdvances') || [];
+
+  // Live sum from entries
+  const tollFromEntries = watchedTollEntries.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dieselFromEntries = watchedDieselEntries.reduce((sum, d) => sum + (Number(d.totalCost) || 0), 0);
+  const maintFromEntries = watchedMaintEntries.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+  const liquidFromEntries = watchedLiquidEntries.reduce((sum, l) => sum + (Number(l.totalCost) || 0), 0);
+  const advanceFromEntries = watchedDriverAdvances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+
+  // Sync entries to summary fields whenever entries change
+  useEffect(() => {
+    if (watchedTollEntries.length > 0) {
+      setValue('toll', tollFromEntries);
+    }
+  }, [tollFromEntries, watchedTollEntries.length, setValue]);
+
+  useEffect(() => {
+    if (watchedDieselEntries.length > 0) {
+      setValue('dieselAmount', dieselFromEntries);
+    }
+  }, [dieselFromEntries, watchedDieselEntries.length, setValue]);
+
+  useEffect(() => {
+    if (watchedMaintEntries.length > 0) {
+      setValue('maintenance', maintFromEntries);
+    }
+  }, [maintFromEntries, watchedMaintEntries.length, setValue]);
+
+  useEffect(() => {
+    if (watchedLiquidEntries.length > 0) {
+      setValue('liquidDiesel', liquidFromEntries);
+    }
+  }, [liquidFromEntries, watchedLiquidEntries.length, setValue]);
+
+  useEffect(() => {
+    if (watchedDriverAdvances.length > 0) {
+      setValue('driverAdvance', advanceFromEntries);
+    }
+  }, [advanceFromEntries, watchedDriverAdvances.length, setValue]);
+
+  // Watched financial inputs strictly coerced to numbers
+  const freightAmount = Number(watch('freightAmount')) || 0;
+  const partyAdvance = Number(watch('partyAdvance')) || 0;
+  const commission = Number(watch('commission')) || 0;
+  const dieselAmount = watchedDieselEntries.length > 0 ? dieselFromEntries : (Number(watch('dieselAmount')) || 0);
+  const liquidDiesel = watchedLiquidEntries.length > 0 ? liquidFromEntries : (Number(watch('liquidDiesel')) || 0);
+  const driverCash = Number(watch('driverCash')) || 0;
+  const toll = watchedTollEntries.length > 0 ? tollFromEntries : (Number(watch('toll')) || 0);
+  const maintenance = watchedMaintEntries.length > 0 ? maintFromEntries : (Number(watch('maintenance')) || 0);
+  const extraRunning = Number(watch('extraRunning')) || 0;
+  const extraCharges = Number(watch('extraCharges')) || 0;
+  const labourCharges = Number(watch('labourCharges')) || 0;
+  const permissionCharges = Number(watch('permissionCharges')) || 0;
   
-  // Also calculate total from dynamic rows if applicable, but user might enter summary values directly.
-  // We'll stick to the summary fields for net profit calculation as requested originally.
-  
-  const balance = freightAmount - partyAdvance;
-  const netProfit = freightAmount - commission - dieselAmount - liquidDiesel - driverCash - toll - maintenance - extraRunning - extraCharges - selfExpenses;
+  const totalFreight = calcTripTotalRevenue({ freightAmount, extraCharges });
+  const balance = calcTripBalance({ freightAmount, extraCharges, partyAdvance });
+  const netProfit = calcTripNetProfit({
+    freightAmount,
+    extraCharges,
+    commission,
+    dieselAmount,
+    liquidDiesel,
+    driverCash,
+    toll,
+    maintenance,
+    extraRunning,
+    labourCharges,
+    permissionCharges
+  });
+
+  const handleFormSubmit = (data: TripFormValues) => {
+    const finalData: TripFormValues = {
+      ...data,
+      freightAmount: Number(data.freightAmount) || 0,
+      partyAdvance: Number(data.partyAdvance) || 0,
+      commission: Number(data.commission) || 0,
+      toll: watchedTollEntries.length > 0 ? tollFromEntries : (Number(data.toll) || 0),
+      dieselAmount: watchedDieselEntries.length > 0 ? dieselFromEntries : (Number(data.dieselAmount) || 0),
+      maintenance: watchedMaintEntries.length > 0 ? maintFromEntries : (Number(data.maintenance) || 0),
+      liquidDiesel: watchedLiquidEntries.length > 0 ? liquidFromEntries : (Number(data.liquidDiesel) || 0),
+      driverAdvance: watchedDriverAdvances.length > 0 ? advanceFromEntries : (Number(data.driverAdvance) || 0),
+      driverCash: Number(data.driverCash) || 0,
+      extraRunning: Number(data.extraRunning) || 0,
+      extraCharges: Number(data.extraCharges) || 0,
+      labourCharges: Number(data.labourCharges) || 0,
+      permissionCharges: Number(data.permissionCharges) || 0,
+    };
+    onSubmit(finalData);
+  };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
-      <div className="grid grid-cols-4 gap-4">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="flex flex-col flex-1 max-h-[75vh] overflow-hidden">
+      <div className="flex-1 overflow-y-auto pr-2 space-y-4 py-2">
+        <div className="grid grid-cols-4 gap-4">
         <div className="space-y-2">
-          <Label>{t('Trip Number *')}</Label>
-          <Input {...register('tripNo')} className="bg-background/50 border-white/10 font-mono font-bold" readOnly={isEdit} />
+          <Label>{t('Trip Number')}</Label>
+          <Input {...register('tripNo')} className="bg-background/50 border-white/10 font-mono font-bold" placeholder={t('Auto-generated')} readOnly={isEdit} />
           {errors.tripNo && <p className="text-red-500 text-xs">{errors.tripNo.message}</p>}
         </div>
         <div className="space-y-2">
@@ -112,7 +191,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
           <Input {...register('tripName')} className="bg-background/50 border-white/10" placeholder="e.g. Mumbai Delivery" />
         </div>
         <div className="space-y-2">
-          <Label>{t('Trip Date *')}</Label>
+          <Label>{t('Trip Date')}</Label>
           <Input type="date" {...register('tripDate')} className="bg-background/50 border-white/10" />
           {errors.tripDate && <p className="text-red-500 text-xs">{errors.tripDate.message}</p>}
         </div>
@@ -132,16 +211,17 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
           <Input type="date" {...register('unloadingDate')} className="bg-background/50 border-white/10" />
         </div>
         <div className="space-y-2">
-          <Label>{t('Vehicle *')}</Label>
+          <Label>{t('Vehicle')}</Label>
           <Controller
             name="vehicleId"
             control={control}
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select onValueChange={(val) => field.onChange(val === 'none' ? '' : val)} value={field.value || 'none'}>
                 <SelectTrigger className="bg-background/50 border-white/10">
                   <SelectValue placeholder={t('Select Vehicle')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">{t('— None —')}</SelectItem>
                   {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.vehicleNumber} {isEdit && v.status !== 'Active' ? `(${v.status})` : ''}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -153,16 +233,17 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>{t('Customer Party *')}</Label>
+          <Label>{t('Customer Party')}</Label>
           <Controller
             name="partyId"
             control={control}
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select onValueChange={(val) => field.onChange(val === 'none' ? '' : val)} value={field.value || 'none'}>
                 <SelectTrigger className="bg-background/50 border-white/10">
                   <SelectValue placeholder={t('Select Customer')} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">{t('— None —')}</SelectItem>
                   {parties.map(p => <SelectItem key={p.id} value={p.id}>{p.companyName}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -283,10 +364,9 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
-        <div className="space-y-2"><Label>{t('From Route Location *')}</Label><Input placeholder="Dispatch City" {...register('from')} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('To Route Location *')}</Label><Input placeholder="Delivery Destination" {...register('to')} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('Via / Route Points')}</Label><Input placeholder="e.g. Surat - Vadodara" {...register('route')} className="bg-background/50 border-white/10" /></div>
+      <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+        <div className="space-y-2"><Label>{t('From')}</Label><Input placeholder="Dispatch City" {...register('from')} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>{t('To')}</Label><Input placeholder="Delivery Destination" {...register('to')} className="bg-background/50 border-white/10" /></div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -314,14 +394,14 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
             )}
           />
         </div>
-        <div className="space-y-2"><Label>{t('Freight Amount (₹) *')}</Label><Input type="number" {...register('freightAmount')} className="bg-background/50 border-white/10 font-semibold text-primary" /></div>
+        <div className="space-y-2"><Label>{t('Freight Amount (₹)')}</Label><Input type="number" {...register('freightAmount')} className="bg-background/50 border-white/10 font-semibold text-primary" /></div>
         <div className="space-y-2"><Label>{t('Commission (₹)')}</Label><Input type="number" {...register('commission')} className="bg-background/50 border-white/10" /></div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2"><Label>{t('Party Advance (₹)')}</Label><Input type="number" {...register('partyAdvance')} className="bg-background/50 border-white/10" /></div>
-        <div className="space-y-2"><Label>{t('Driver Savings (Bachat)')}</Label><Input type="number" {...register('driverSavings')} className="bg-background/50 border-white/10 text-green-400" /></div>
-        <div className="space-y-2"><Label>{t('Self Expenses (Kharch)')}</Label><Input type="number" {...register('selfExpenses')} className="bg-background/50 border-white/10 text-orange-400" /></div>
+        <div className="space-y-2"><Label>{t('Labour Charges (₹)')}</Label><Input type="number" {...register('labourCharges')} className="bg-background/50 border-white/10" /></div>
+        <div className="space-y-2"><Label>{t('Permission Charges (₹)')}</Label><Input type="number" {...register('permissionCharges')} className="bg-background/50 border-white/10" /></div>
       </div>
 
       <Card className="bg-background/20 border-white/10 mt-4">
@@ -329,8 +409,7 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         <CardContent className="space-y-2">
           {tollFields.map((field, index) => (
             <div key={field.id} className="flex gap-2 items-end">
-              <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Toll Name')}</Label><Input {...register(`tollEntries.${index}.tollName`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Amount')}</Label><Input type="number" {...register(`tollEntries.${index}.amount`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Amount (₹)')}</Label><Input type="number" {...register(`tollEntries.${index}.amount`)} className="h-8 bg-background/50" /></div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Date')}</Label><Input type="date" {...register(`tollEntries.${index}.date`)} className="h-8 bg-background/50" /></div>
               <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Remarks')}</Label><Input {...register(`tollEntries.${index}.remarks`)} className="h-8 bg-background/50" placeholder="Optional" /></div>
               <Button type="button" variant="ghost" size="sm" onClick={() => removeToll(index)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="w-4 h-4"/></Button>
@@ -360,9 +439,35 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         <CardContent className="space-y-2">
           {dieselFields.map((field, index) => (
             <div key={field.id} className="flex gap-2 items-end">
-              <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Diesel (Quantity)')}</Label><Input type="number" {...register(`dieselEntries.${index}.litres`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-[1.5] space-y-1">
+                <Label className="text-xs">{t('Diesel (Quantity)')}</Label>
+                <Input
+                  type="number"
+                  {...register(`dieselEntries.${index}.litres`, {
+                    onChange: (e) => {
+                      const litres = parseFloat(e.target.value) || 0;
+                      const rate = watch(`dieselEntries.${index}.ratePerLitre`) || 0;
+                      setValue(`dieselEntries.${index}.totalCost`, Math.round(litres * rate * 100) / 100);
+                    }
+                  })}
+                  className="h-8 bg-background/50"
+                />
+              </div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Date')}</Label><Input type="date" {...register(`dieselEntries.${index}.date`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Price')}</Label><Input type="number" {...register(`dieselEntries.${index}.ratePerLitre`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">{t('Price')}</Label>
+                <Input
+                  type="number"
+                  {...register(`dieselEntries.${index}.ratePerLitre`, {
+                    onChange: (e) => {
+                      const rate = parseFloat(e.target.value) || 0;
+                      const litres = watch(`dieselEntries.${index}.litres`) || 0;
+                      setValue(`dieselEntries.${index}.totalCost`, Math.round(litres * rate * 100) / 100);
+                    }
+                  })}
+                  className="h-8 bg-background/50"
+                />
+              </div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Total')}</Label><Input type="number" {...register(`dieselEntries.${index}.totalCost`)} className="h-8 bg-background/50" /></div>
               <Button type="button" variant="ghost" size="sm" onClick={() => removeDiesel(index)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="w-4 h-4"/></Button>
             </div>
@@ -376,9 +481,35 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         <CardContent className="space-y-2">
           {liquidFields.map((field, index) => (
             <div key={field.id} className="flex gap-2 items-end">
-              <div className="flex-[1.5] space-y-1"><Label className="text-xs">{t('Diesel (Quantity)')}</Label><Input type="number" {...register(`liquidEntries.${index}.litres`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-[1.5] space-y-1">
+                <Label className="text-xs">{t('Liquid (Quantity)')}</Label>
+                <Input
+                  type="number"
+                  {...register(`liquidEntries.${index}.litres`, {
+                    onChange: (e) => {
+                      const litres = parseFloat(e.target.value) || 0;
+                      const rate = watch(`liquidEntries.${index}.ratePerLitre`) || 0;
+                      setValue(`liquidEntries.${index}.totalCost`, Math.round(litres * rate * 100) / 100);
+                    }
+                  })}
+                  className="h-8 bg-background/50"
+                />
+              </div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Date')}</Label><Input type="date" {...register(`liquidEntries.${index}.date`)} className="h-8 bg-background/50" /></div>
-              <div className="flex-1 space-y-1"><Label className="text-xs">{t('Price')}</Label><Input type="number" {...register(`liquidEntries.${index}.ratePerLitre`)} className="h-8 bg-background/50" /></div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">{t('Price')}</Label>
+                <Input
+                  type="number"
+                  {...register(`liquidEntries.${index}.ratePerLitre`, {
+                    onChange: (e) => {
+                      const rate = parseFloat(e.target.value) || 0;
+                      const litres = watch(`liquidEntries.${index}.litres`) || 0;
+                      setValue(`liquidEntries.${index}.totalCost`, Math.round(litres * rate * 100) / 100);
+                    }
+                  })}
+                  className="h-8 bg-background/50"
+                />
+              </div>
               <div className="flex-1 space-y-1"><Label className="text-xs">{t('Total')}</Label><Input type="number" {...register(`liquidEntries.${index}.totalCost`)} className="h-8 bg-background/50" /></div>
               <Button type="button" variant="ghost" size="sm" onClick={() => removeLiquid(index)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="w-4 h-4"/></Button>
             </div>
@@ -401,34 +532,68 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         </CardContent>
       </Card>
 
-      {/* Main Totals used for legacy fields just in case */}
-      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
-        <div className="space-y-2"><Label>{t('Total Summary Diesel (₹)')}</Label><Input type="number" {...register('dieselAmount')} className="bg-background/50" /></div>
-        <div className="space-y-2"><Label>{t('Total Summary Toll (₹)')}</Label><Input type="number" {...register('toll')} className="bg-background/50" /></div>
-        <div className="space-y-2"><Label>{t('Total Summary Maintenance (₹)')}</Label><Input type="number" {...register('maintenance')} className="bg-background/50" /></div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 pt-2">
-        <div className="space-y-2"><Label>{t('Extra Charges (₹)')}</Label><Input type="number" {...register('extraCharges')} className="bg-background/50" /></div>
-        
-        <Card className="bg-orange-500/10 border-orange-500/20 col-span-1">
-          <CardContent className="p-3 flex justify-between items-center h-full">
-            <span className="text-xs text-orange-500/80 font-medium">{t('Balance')}</span>
-            <span className={`text-lg font-bold text-orange-500`}>
-              {formatCurrency(balance)}
-            </span>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-primary/5 border-primary/20 col-span-1">
-          <CardContent className="p-3 flex justify-between items-center h-full">
-            <span className="text-xs text-muted-foreground font-medium">{t('Net Profit')}</span>
-            <span className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {formatCurrency(netProfit)}
-            </span>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Total Summary */}
+      <Card className="bg-background/20 border-white/10 mt-4">
+        <CardHeader className="py-3"><CardTitle className="text-sm">{t('Total Summary')}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>{t('Total Diesel (₹)')}</Label>
+                {watchedDieselEntries.length > 0 && <span className="text-[10px] text-primary">({t('from entries')})</span>}
+              </div>
+              <Input type="number" {...register('dieselAmount')} readOnly={watchedDieselEntries.length > 0} className="bg-background/50" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>{t('Total Toll (₹)')}</Label>
+                {watchedTollEntries.length > 0 && <span className="text-[10px] text-primary">({t('from entries')})</span>}
+              </div>
+              <Input type="number" {...register('toll')} readOnly={watchedTollEntries.length > 0} className="bg-background/50" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>{t('Total Maintenance (₹)')}</Label>
+                {watchedMaintEntries.length > 0 && <span className="text-[10px] text-primary">({t('from entries')})</span>}
+              </div>
+              <Input type="number" {...register('maintenance')} readOnly={watchedMaintEntries.length > 0} className="bg-background/50" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>{t('Extra Charges (₹)')}</Label><Input type="number" {...register('extraCharges')} className="bg-background/50" /></div>
+            <div className="space-y-2"><Label>{t('Driver Cash (₹)')}</Label><Input type="number" {...register('driverCash')} className="bg-background/50" /></div>
+            <div className="space-y-2"><Label>{t('Extra Running (₹)')}</Label><Input type="number" {...register('extraRunning')} className="bg-background/50" /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-white/10">
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="p-3 flex flex-col items-center">
+                <span className="text-xs text-muted-foreground">{t('Total Freight')}</span>
+                <span className="text-lg font-bold text-primary">{formatCurrency(totalFreight)}</span>
+              </CardContent>
+            </Card>
+            <Card className="bg-green-500/10 border-green-500/20">
+              <CardContent className="p-3 flex flex-col items-center">
+                <span className="text-xs text-green-500/80">{t('Advance Received')}</span>
+                <span className="text-lg font-bold text-green-500">{formatCurrency(partyAdvance)}</span>
+              </CardContent>
+            </Card>
+            <Card className="bg-orange-500/10 border-orange-500/20">
+              <CardContent className="p-3 flex flex-col items-center">
+                <span className="text-xs text-orange-500/80">{t('Balance Due')}</span>
+                <span className="text-lg font-bold text-orange-500">{formatCurrency(balance)}</span>
+              </CardContent>
+            </Card>
+          </div>
+          <Card className={`${netProfit >= 0 ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+            <CardContent className="p-3 flex justify-between items-center">
+              <span className="text-xs text-muted-foreground font-medium">{t('Net Profit')}</span>
+              <span className={`text-lg font-bold ${netProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {formatCurrency(netProfit)}
+              </span>
+            </CardContent>
+          </Card>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
         <div className="space-y-2">
@@ -442,11 +607,13 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Draft">{t('Draft')}</SelectItem>
                   <SelectItem value="Scheduled">{t('Scheduled')}</SelectItem>
                   <SelectItem value="Loading">{t('Loading')}</SelectItem>
                   <SelectItem value="In Transit">{t('In Transit')}</SelectItem>
                   <SelectItem value="Unloading">{t('Unloading')}</SelectItem>
                   <SelectItem value="Completed">{t('Completed')}</SelectItem>
+                  <SelectItem value="Cancelled">{t('Cancelled')}</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -497,7 +664,9 @@ export function TripForm({ initialData, vehicles, drivers, parties, onSubmit, on
         <Input {...register('notes')} placeholder="e.g. Unloading delay" className="bg-background/50 border-white/10" />
       </div>
 
-      <div className="flex justify-end gap-2 pt-4">
+      </div>
+
+      <div className="flex justify-end gap-2 pt-4 border-t border-white/10 mt-2 bg-background/80 backdrop-blur-sm sticky bottom-0 z-10">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>{t('Cancel')}</Button>
         <Button type="submit" disabled={isSubmitting} className="bg-primary text-primary-foreground hover:bg-primary/90">
           {isSubmitting ? t('Saving...') : (isEdit ? t('Update Trip') : t('Save Trip'))}
