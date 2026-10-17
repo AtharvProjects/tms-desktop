@@ -298,12 +298,34 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', async () => {
-  await prisma.$disconnect()
-  if (process.platform !== 'darwin') {
-    app.quit()
+let isAppQuitting = false;
+app.on('before-quit', async (event) => {
+  if (!isAppQuitting) {
+    isAppQuitting = true;
+    event.preventDefault();
+    try {
+      if (whatsappManager) {
+        await whatsappManager.cleanupOnExit();
+      }
+    } catch (err) {
+      errorToFile('[Main] Error during app before-quit cleanup:', err);
+    } finally {
+      app.quit();
+    }
   }
-})
+});
+
+app.on('window-all-closed', async () => {
+  await prisma.$disconnect();
+  if (whatsappManager) {
+    try {
+      await whatsappManager.cleanupOnExit();
+    } catch (e) {}
+  }
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {

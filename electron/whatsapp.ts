@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { app, BrowserWindow } from 'electron';
 import QRCode from 'qrcode';
+import { execSync, execFileSync } from 'child_process';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth, MessageMedia } = pkg;
 
@@ -61,6 +62,140 @@ export class WhatsAppConnectionManager {
 
   private getAuthPath(): string {
     return path.join(app.getPath('userData'), '.wwebjs_auth');
+  }
+
+  private getBrowserPidPath(): string {
+    return path.join(app.getPath('userData'), 'whatsapp_browser.pid');
+  }
+
+  private saveBrowserPid(pid: number | undefined | null) {
+    if (!pid || isNaN(pid) || pid <= 0) return;
+    try {
+      const p = this.getBrowserPidPath();
+      fs.writeFileSync(p, String(pid), 'utf-8');
+      this.logToFile(`[WhatsApp] Saved browser PID: ${pid}`);
+    } catch (e) {
+      this.errorToFile('[WhatsApp] Failed to save browser PID:', e);
+    }
+  }
+
+  private clearBrowserPid() {
+    try {
+      const p = this.getBrowserPidPath();
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        this.logToFile('[WhatsApp] Cleared browser PID file.');
+      }
+    } catch (e) {}
+  }
+
+  public async killOrphanedBrowserProcesses(force: boolean = false): Promise<void> {
+    this.logToFile(`[WhatsApp] killOrphanedBrowserProcesses() initiated (force=${force})...`);
+
+    // 1. Terminate browser from saved PID if present
+    const pidFile = this.getBrowserPidPath();
+    if (fs.existsSync(pidFile)) {
+      try {
+        const raw = fs.readFileSync(pidFile, 'utf-8').trim();
+        const pid = parseInt(raw, 10);
+        if (!isNaN(pid) && pid > 0) {
+          this.logToFile(`[WhatsApp] Found tracked browser PID ${pid}. Terminating process tree...`);
+          if (process.platform === 'win32') {
+            try {
+              execSync(`taskkill /pid ${pid} /t /f`, { windowsHide: true, stdio: 'ignore', timeout: 4000 });
+              this.logToFile(`[WhatsApp] Successfully killed process tree for PID ${pid}`);
+            } catch (kErr) {}
+          } else {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch (kErr) {}
+          }
+        }
+      } catch (e) {
+        this.errorToFile('[WhatsApp] Error reading/killing saved PID:', e);
+      } finally {
+        this.clearBrowserPid();
+      }
+    }
+
+    // 2. Scan and terminate only the Chromium processes whose CommandLine targets our session/auth directory
+    const authPath = this.getAuthPath();
+    const sessionPath = path.join(authPath, 'session');
+
+    if (process.platform === 'win32') {
+      try {
+        const safeAuthPath = authPath.replace(/\\/g, '\\\\').replace(/'/g, "''");
+        const safeSessionPath = sessionPath.replace(/\\/g, '\\\\').replace(/'/g, "''");
+
+        const psScript = `
+          $targets = @('.wwebjs_auth', '${safeAuthPath}', '${safeSessionPath}')
+          Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'msedge.exe'" -ErrorAction SilentlyContinue | Where-Object {
+            $cmd = $_.CommandLine
+            if ($cmd) {
+              foreach ($t in $targets) {
+                if ($t -and $cmd.IndexOf($t, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                  return $true
+                }
+              }
+            }
+            return $false
+          } | ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+          }
+        `;
+
+        execFileSync('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-NonInteractive', '-Command', psScript], {
+          windowsHide: true,
+          timeout: 6000,
+          stdio: 'ignore'
+        });
+        this.logToFile('[WhatsApp] Successfully checked and cleaned up any lingering session browser processes.');
+      } catch (scanErr) {
+        this.logToFile('[WhatsApp] Notice: Process scan warning:', scanErr);
+      }
+    } else {
+      try {
+        execSync(`pkill -9 -f "${sessionPath}" || true`, { stdio: 'ignore', timeout: 3000 });
+      } catch (e) {}
+    }
+  }
+
+  public cleanSessionLocks(): boolean {
+    const authPath = this.getAuthPath();
+    const sessionDir = path.join(authPath, 'session');
+    if (!fs.existsSync(sessionDir)) return true;
+
+    let allCleaned = true;
+    const lockFileNames = [
+      'lockfile',
+      'SingletonLock',
+      'SingletonCookie',
+      'SingletonSocket',
+      'DevToolsActivePort'
+    ];
+
+    const targetDirs = [
+      sessionDir,
+      path.join(sessionDir, 'Default')
+    ];
+
+    for (const dir of targetDirs) {
+      if (fs.existsSync(dir)) {
+        for (const fname of lockFileNames) {
+          const filePath = path.join(dir, fname);
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              this.logToFile(`[WhatsApp] Removed stale lock file: ${filePath}`);
+            }
+          } catch (err: any) {
+            allCleaned = false;
+            this.logToFile(`[WhatsApp] Notice: Could not remove lock file ${filePath}:`, err?.message || err);
+          }
+        }
+      }
+    }
+    return allCleaned;
   }
 
   private getAccountInfoPath(): string {
@@ -154,13 +289,13 @@ export class WhatsAppConnectionManager {
   }
 
   public async initialize(forceFreshQr: boolean = false): Promise<WhatsAppStatusPayload> {
-    this.logToFile('[WhatsApp] initialize() requested. Current status:', this.status);
+    this.logToFile('[WhatsApp] initialize() requested. Current status:', this.status, 'forceFreshQr:', forceFreshQr);
 
     if (this.status === 'CONNECTED' && this.client) {
       return this.getStatusPayload();
     }
 
-    if (this.status === 'CONNECTING' && this.client) {
+    if (this.status === 'CONNECTING' && this.client && !forceFreshQr) {
       return this.getStatusPayload();
     }
 
@@ -174,164 +309,238 @@ export class WhatsAppConnectionManager {
     this.isQrExpired = false;
     this.emitStatus();
 
-    try {
-      if (this.client) {
-        try {
-          await this.client.destroy();
-        } catch (e) {}
-        this.client = null;
-      }
+    const maxAttempts = 2;
+    let attempt = 0;
 
-      const authPath = this.getAuthPath();
-      const puppeteerExecPath = this.resolveBrowserExecutable();
+    while (attempt < maxAttempts) {
+      attempt++;
+      this.logToFile(`[WhatsApp] Initializing client attempt ${attempt}/${maxAttempts}...`);
 
-      this.client = new Client({
-        authStrategy: new LocalAuth({ dataPath: authPath }),
-        webVersionCache: { type: 'none' },
-        puppeteer: {
-          headless: true,
-          ...(puppeteerExecPath ? { executablePath: puppeteerExecPath } : {}),
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-          ]
+      try {
+        if (this.client) {
+          try {
+            await this.client.destroy();
+          } catch (e) {}
+          this.client = null;
         }
-      });
 
-      this.client.on('qr', async (qr) => {
-        this.logToFile('[WhatsApp] Event: qr code received');
-        this.status = 'QR_REQUIRED';
-        this.isQrExpired = false;
-        
-        try {
-          this.qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 6 });
-          this.qrExpiresAt = Date.now() + 30000; // 30s expiry
+        // 1. Force kill any lingering browser processes before launching
+        await this.killOrphanedBrowserProcesses();
 
-          if (this.qrTimer) clearTimeout(this.qrTimer);
-          this.qrTimer = setTimeout(() => {
-            this.logToFile('[WhatsApp] QR code expired.');
-            this.isQrExpired = true;
-            this.emitStatus();
-          }, 30000);
+        // 2. Clear stale lock files
+        this.cleanSessionLocks();
 
-          this.emitStatus();
-        } catch (err: any) {
-          this.errorToFile('[WhatsApp] Failed to generate QR data URL:', err);
-        }
-      });
+        const authPath = this.getAuthPath();
+        const puppeteerExecPath = this.resolveBrowserExecutable();
 
-      this.client.on('authenticated', () => {
-        this.logToFile('[WhatsApp] Event: authenticated');
-        this.status = 'CONNECTING';
-        this.lastError = null;
-        if (this.qrTimer) clearTimeout(this.qrTimer);
-        this.qrDataUrl = null;
-        this.qrExpiresAt = null;
-        this.isQrExpired = false;
-        this.emitStatus();
-      });
-
-      this.client.on('ready', async () => {
-        this.logToFile('[WhatsApp] Event: ready! Client is connected.');
-        this.status = 'CONNECTED';
-        this.lastError = null;
-        this.qrDataUrl = null;
-        this.qrExpiresAt = null;
-        this.isQrExpired = false;
-
-        // Retrieve real phone and pushname from client.info
-        let phone = '';
-        let pushname = 'Connected Device';
-        let platform = 'WhatsApp Web';
-
-        try {
-          if (this.client?.info) {
-            const rawUser = this.client.info.wid?.user || '';
-            phone = rawUser ? `+${rawUser}` : '';
-            pushname = this.client.info.pushname || 'Connected WhatsApp Account';
-            platform = this.client.info.platform || 'WhatsApp Web';
+        this.client = new Client({
+          authStrategy: new LocalAuth({ dataPath: authPath }),
+          webVersionCache: { type: 'none' },
+          puppeteer: {
+            headless: true,
+            ...(puppeteerExecPath ? { executablePath: puppeteerExecPath } : {}),
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-accelerated-2d-canvas',
+              '--no-first-run',
+              '--no-zygote',
+              '--disable-gpu'
+            ]
           }
-        } catch (e) {
-          this.errorToFile('[WhatsApp] Failed to read client.info:', e);
-        }
-
-        const nowStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-        this.saveCachedAccountInfo({
-          phone: phone || (this.accountInfo?.phone || '+91 Linked Account'),
-          pushname,
-          platform,
-          lastConnected: `Today, ${nowStr}`
         });
 
-        this.emitStatus();
+        // Background poller to capture and save spawned browser PID as soon as it launches
+        const pidCheckInterval = setInterval(() => {
+          try {
+            const pid = (this.client as any)?.pupBrowser?.process?.()?.pid;
+            if (pid) {
+              this.saveBrowserPid(pid);
+              clearInterval(pidCheckInterval);
+            }
+          } catch (e) {}
+        }, 250);
+        setTimeout(() => clearInterval(pidCheckInterval), 25000);
 
-        // Inject runtime resilience patch for WhatsApp Web MobX memoizer
-        try {
-          await (this.client as any)?.pupPage?.evaluate(() => {
-            try {
-              const SendMsgChatAction = (window as any).require?.('WAWebSendMsgChatAction');
-              if (SendMsgChatAction && !SendMsgChatAction.__memoizePatched) {
-                SendMsgChatAction.__memoizePatched = true;
-                const origAddAndSend = SendMsgChatAction.addAndSendMsgToChat;
-                SendMsgChatAction.addAndSendMsgToChat = function(chat: any, message: any) {
-                  if (message) {
-                    delete message.__x_id;
-                    if (message.id && typeof message.id === 'object') {
-                      delete message.id.__x_id;
-                    }
-                  }
-                  return origAddAndSend.apply(this, arguments);
-                };
-              }
-            } catch (e) {}
+        this.client.on('qr', async (qr) => {
+          this.logToFile('[WhatsApp] Event: qr code received');
+          try {
+            const pid = (this.client as any)?.pupBrowser?.process?.()?.pid;
+            if (pid) this.saveBrowserPid(pid);
+          } catch (e) {}
+
+          this.status = 'QR_REQUIRED';
+          this.isQrExpired = false;
+          
+          try {
+            this.qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 6 });
+            this.qrExpiresAt = Date.now() + 30000; // 30s expiry
+
+            if (this.qrTimer) clearTimeout(this.qrTimer);
+            this.qrTimer = setTimeout(() => {
+              this.logToFile('[WhatsApp] QR code expired.');
+              this.isQrExpired = true;
+              this.emitStatus();
+            }, 30000);
+
+            this.emitStatus();
+          } catch (err: any) {
+            this.errorToFile('[WhatsApp] Failed to generate QR data URL:', err);
+          }
+        });
+
+        this.client.on('authenticated', () => {
+          this.logToFile('[WhatsApp] Event: authenticated');
+          try {
+            const pid = (this.client as any)?.pupBrowser?.process?.()?.pid;
+            if (pid) this.saveBrowserPid(pid);
+          } catch (e) {}
+
+          this.status = 'CONNECTING';
+          this.lastError = null;
+          if (this.qrTimer) clearTimeout(this.qrTimer);
+          this.qrDataUrl = null;
+          this.qrExpiresAt = null;
+          this.isQrExpired = false;
+          this.emitStatus();
+        });
+
+        this.client.on('ready', async () => {
+          this.logToFile('[WhatsApp] Event: ready! Client is connected.');
+          try {
+            const pid = (this.client as any)?.pupBrowser?.process?.()?.pid;
+            if (pid) this.saveBrowserPid(pid);
+          } catch (e) {}
+
+          this.status = 'CONNECTED';
+          this.lastError = null;
+          this.qrDataUrl = null;
+          this.qrExpiresAt = null;
+          this.isQrExpired = false;
+
+          // Retrieve real phone and pushname from client.info
+          let phone = '';
+          let pushname = 'Connected Device';
+          let platform = 'WhatsApp Web';
+
+          try {
+            if (this.client?.info) {
+              const rawUser = this.client.info.wid?.user || '';
+              phone = rawUser ? `+${rawUser}` : '';
+              pushname = this.client.info.pushname || 'Connected WhatsApp Account';
+              platform = this.client.info.platform || 'WhatsApp Web';
+            }
+          } catch (e) {
+            this.errorToFile('[WhatsApp] Failed to read client.info:', e);
+          }
+
+          const nowStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          this.saveCachedAccountInfo({
+            phone: phone || (this.accountInfo?.phone || '+91 Linked Account'),
+            pushname,
+            platform,
+            lastConnected: `Today, ${nowStr}`
           });
-        } catch (patchErr) {}
-      });
 
-      this.client.on('auth_failure', (msg) => {
-        this.errorToFile('[WhatsApp] Event: auth_failure:', msg);
-        this.status = 'SESSION_EXPIRED';
-        this.lastError = `Session expired: ${msg || 'Authentication failed'}. Please scan QR code again.`;
-        this.qrDataUrl = null;
-        this.emitStatus();
-      });
+          this.emitStatus();
 
-      this.client.on('disconnected', (reason) => {
-        this.logToFile('[WhatsApp] Event: disconnected. Reason:', reason);
-        this.status = 'DISCONNECTED';
-        this.lastError = `WhatsApp was logged out: ${reason}`;
-        this.qrDataUrl = null;
-        this.client = null;
-        this.emitStatus();
-      });
+          // Inject runtime resilience patch for WhatsApp Web MobX memoizer
+          try {
+            await (this.client as any)?.pupPage?.evaluate(() => {
+              try {
+                const SendMsgChatAction = (window as any).require?.('WAWebSendMsgChatAction');
+                if (SendMsgChatAction && !SendMsgChatAction.__memoizePatched) {
+                  SendMsgChatAction.__memoizePatched = true;
+                  const origAddAndSend = SendMsgChatAction.addAndSendMsgToChat;
+                  SendMsgChatAction.addAndSendMsgToChat = function(chat: any, message: any) {
+                    if (message) {
+                      delete message.__x_id;
+                      if (message.id && typeof message.id === 'object') {
+                        delete message.id.__x_id;
+                      }
+                    }
+                    return origAddAndSend.apply(this, arguments);
+                  };
+                }
+              } catch (e) {}
+            });
+          } catch (patchErr) {}
+        });
 
-      this.client.on('change_state', (state) => {
-        this.logToFile('[WhatsApp] Event: change_state:', state);
-        if (state === 'CONFLICT' || state === 'UNPAIRED' || state === 'UNLAUNCHED') {
+        this.client.on('auth_failure', (msg) => {
+          this.errorToFile('[WhatsApp] Event: auth_failure:', msg);
           this.status = 'SESSION_EXPIRED';
+          this.lastError = `Session expired: ${msg || 'Authentication failed'}. Please scan QR code again.`;
+          this.qrDataUrl = null;
           this.emitStatus();
-        } else if (state === 'TIMEOUT') {
-          this.status = 'RECONNECTING';
-          this.emitStatus();
-        }
-      });
+        });
 
-      this.logToFile('[WhatsApp] Calling client.initialize()...');
-      await this.client.initialize();
-      this.logToFile('[WhatsApp] client.initialize() returned successfully.');
-      return this.getStatusPayload();
-    } catch (err: any) {
-      this.errorToFile('[WhatsApp] Initialization failed:', err);
-      this.status = 'ERROR';
-      this.lastError = err.message || 'Failed to initialize WhatsApp browser.';
-      this.emitStatus();
-      return this.getStatusPayload();
+        this.client.on('disconnected', (reason) => {
+          this.logToFile('[WhatsApp] Event: disconnected. Reason:', reason);
+          this.status = 'DISCONNECTED';
+          this.lastError = `WhatsApp was logged out: ${reason}`;
+          this.qrDataUrl = null;
+          this.clearBrowserPid();
+          this.client = null;
+          this.emitStatus();
+        });
+
+        this.client.on('change_state', (state) => {
+          this.logToFile('[WhatsApp] Event: change_state:', state);
+          if (state === 'CONFLICT' || state === 'UNPAIRED' || state === 'UNLAUNCHED') {
+            this.status = 'SESSION_EXPIRED';
+            this.emitStatus();
+          } else if (state === 'TIMEOUT') {
+            this.status = 'RECONNECTING';
+            this.emitStatus();
+          }
+        });
+
+        this.logToFile('[WhatsApp] Calling client.initialize()...');
+        await this.client.initialize();
+        this.logToFile('[WhatsApp] client.initialize() returned successfully.');
+
+        try {
+          const pid = (this.client as any)?.pupBrowser?.process?.()?.pid;
+          if (pid) this.saveBrowserPid(pid);
+        } catch (e) {}
+
+        return this.getStatusPayload();
+      } catch (err: any) {
+        this.errorToFile(`[WhatsApp] Initialization attempt ${attempt} failed:`, err);
+        const errMsg = err?.message || String(err);
+        const isLockedError =
+          errMsg.includes('already running') ||
+          errMsg.includes('userDataDir') ||
+          errMsg.includes('ProcessSingleton') ||
+          errMsg.includes('lockfile') ||
+          errMsg.includes('EBUSY');
+
+        if (isLockedError && attempt < maxAttempts) {
+          this.logToFile('[WhatsApp] Browser profile locked detected. Running deep cleanup & self-healing retry...');
+          if (this.client) {
+            try { await this.client.destroy(); } catch (e) {}
+            this.client = null;
+          }
+          await this.killOrphanedBrowserProcesses(true);
+          await new Promise(r => setTimeout(r, 1200));
+          this.cleanSessionLocks();
+          continue;
+        }
+
+        this.status = 'ERROR';
+        if (isLockedError) {
+          this.lastError = 'The WhatsApp browser was locked by a previous session or update. Please click "Retry Connection" to unlock and restart, or "Reset Session" to reconnect with a new QR code.';
+        } else {
+          this.lastError = errMsg || 'Failed to initialize WhatsApp browser.';
+        }
+        this.emitStatus();
+        return this.getStatusPayload();
+      }
     }
+
+    return this.getStatusPayload();
   }
 
   public async disconnect(): Promise<WhatsAppStatusPayload> {
@@ -348,6 +557,11 @@ export class WhatsAppConnectionManager {
       this.client = null;
     }
 
+    // Force kill any lingering browser processes holding session files
+    await this.killOrphanedBrowserProcesses(true);
+    await new Promise(r => setTimeout(r, 500));
+    this.cleanSessionLocks();
+
     // Clear auth directory to guarantee clean disconnected state
     const authPath = this.getAuthPath();
     try {
@@ -356,9 +570,19 @@ export class WhatsAppConnectionManager {
         this.logToFile('[WhatsApp] Removed .wwebjs_auth folder.');
       }
     } catch (err) {
-      this.errorToFile('[WhatsApp] Error deleting auth folder:', err);
+      this.errorToFile('[WhatsApp] Error deleting auth folder on first try, retrying in 500ms:', err);
+      await new Promise(r => setTimeout(r, 500));
+      try {
+        if (fs.existsSync(authPath)) {
+          fs.rmSync(authPath, { recursive: true, force: true });
+          this.logToFile('[WhatsApp] Removed .wwebjs_auth folder on retry.');
+        }
+      } catch (retryErr) {
+        this.errorToFile('[WhatsApp] Error deleting auth folder on retry:', retryErr);
+      }
     }
 
+    this.clearBrowserPid();
     this.saveCachedAccountInfo(null);
     this.status = 'DISCONNECTED';
     this.qrDataUrl = null;
@@ -367,6 +591,26 @@ export class WhatsAppConnectionManager {
     this.lastError = null;
     this.emitStatus();
     return this.getStatusPayload();
+  }
+
+  public async cleanupOnExit(): Promise<void> {
+    this.logToFile('[WhatsApp] cleanupOnExit() initiated.');
+    if (this.qrTimer) clearTimeout(this.qrTimer);
+
+    if (this.client) {
+      try {
+        await Promise.race([
+          this.client.destroy(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+        ]);
+      } catch (e) {}
+      this.client = null;
+    }
+
+    await this.killOrphanedBrowserProcesses(true);
+    this.cleanSessionLocks();
+    this.clearBrowserPid();
+    this.logToFile('[WhatsApp] cleanupOnExit() finished successfully.');
   }
 
   public formatPhoneToChatId(phone: string): { chatId: string; cleanPhone: string } {
